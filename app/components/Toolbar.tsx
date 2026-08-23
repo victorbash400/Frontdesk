@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Columns3, Ellipsis, GalleryHorizontal, LayoutGrid, List, ListFilter, Search, Share, SquarePen, Tag } from "lucide-react";
+import { ChevronLeft, ChevronRight, Ellipsis, LayoutGrid, List, ListFilter, Search, Share, SquarePen, Tag } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import type { BreadcrumbItem, Destination, SortMode, ViewMode } from "../types/filesystem";
@@ -6,10 +6,8 @@ import { Breadcrumbs } from "./Breadcrumbs";
 import styles from "./Toolbar.module.css";
 
 const viewModes: Array<{ mode: ViewMode; label: string; icon: typeof LayoutGrid }> = [
-  { mode: "icons", label: "Icon view", icon: LayoutGrid },
+  { mode: "grid", label: "Grid view", icon: LayoutGrid },
   { mode: "list", label: "List view", icon: List },
-  { mode: "columns", label: "Column view", icon: Columns3 },
-  { mode: "gallery", label: "Gallery view", icon: GalleryHorizontal },
 ];
 
 type ToolbarProps = {

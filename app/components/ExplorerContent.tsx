@@ -1,8 +1,6 @@
 import type { MouseEvent } from "react";
 
 import type { FileSystemNode, ViewMode } from "../types/filesystem";
-import { ColumnView } from "./ColumnView";
-import { GalleryView } from "./GalleryView";
 import { IconView } from "./IconView";
 import { ListView } from "./ListView";
 import styles from "./ExplorerContent.module.css";
@@ -21,10 +19,8 @@ export function ExplorerContent({ nodes, selectedNode, viewMode, onOpen, onConte
   const shared = { nodes, onOpen, onContextMenu };
   return (
     <section className={styles.content}>
-      {viewMode === "icons" ? <IconView {...shared} selectedId={selectedNode?.id} /> : null}
+      {viewMode === "grid" ? <IconView {...shared} selectedId={selectedNode?.id} /> : null}
       {viewMode === "list" ? <ListView {...shared} selectedId={selectedNode?.id} /> : null}
-      {viewMode === "columns" ? <ColumnView {...shared} selectedNode={selectedNode} /> : null}
-      {viewMode === "gallery" ? <GalleryView {...shared} selectedNode={selectedNode} /> : null}
     </section>
   );
 }
