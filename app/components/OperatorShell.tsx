@@ -4,9 +4,10 @@ import { useDeferredValue, useMemo, useState, type KeyboardEvent, type MouseEven
 
 import { useFileSystem } from "../hooks/useFileSystem";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
-import { breadcrumbsForDestination, isContainer, nodesForDestination, sortNodes } from "../lib/fileSystemSelectors";
+import { breadcrumbsForDestination, folderPath, isContainer, nodesForDestination, sortNodes } from "../lib/fileSystemSelectors";
 import { tagColors, type FileSystemNode, type SortMode, type ViewMode } from "../types/filesystem";
 import { CreateItemDialog } from "./CreateItemDialog";
+import { ClientChatPanel } from "./ClientChatPanel";
 import { ExplorerContent } from "./ExplorerContent";
 import { Inspector } from "./Inspector";
 import { ItemContextMenu, type ContextMenuState } from "./ItemContextMenu";
@@ -20,6 +21,7 @@ export function OperatorShell() {
   const fileSystem = useFileSystem();
   const navigation = useNavigationHistory();
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [sort, setSort] = useState<SortMode>("name-asc");
@@ -36,6 +38,12 @@ export function OperatorShell() {
 
   const selectedNode = visibleNodes.find((node) => node.id === selectedId);
   const breadcrumbs = useMemo(() => breadcrumbsForDestination(fileSystem.data.nodes, navigation.destination), [fileSystem.data.nodes, navigation.destination]);
+  const client = useMemo(() => {
+    const destination = navigation.destination;
+    if (destination.type === "client-location") return fileSystem.data.nodes.find((node) => node.id === destination.clientId && node.kind === "client");
+    if (destination.type !== "folder") return undefined;
+    return folderPath(fileSystem.data.nodes, destination.id).find((node) => node.kind === "client");
+  }, [fileSystem.data.nodes, navigation.destination]);
   const canCreate = navigation.destination.type === "folder" || navigation.destination.type === "location" && navigation.destination.location === "clients";
 
   function navigate(destination: Parameters<typeof navigation.navigate>[0]) {
@@ -94,14 +102,15 @@ export function OperatorShell() {
 
   return (
     <main className={styles.shell} onKeyDown={handleKeyboard} style={tagVariables} tabIndex={-1}>
-      <Sidebar destination={navigation.destination} onCreateClient={() => setDialog({ mode: "create-client" })} onNavigate={(location) => navigate({ type: "location", location })} />
+      <Sidebar client={client ? { id: client.id, name: client.name } : undefined} destination={navigation.destination} onCreateClient={() => setDialog({ mode: "create-client" })} onNavigate={navigate} />
       <section className={styles.explorer}>
-        <Toolbar breadcrumbs={breadcrumbs} canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={navigation.back} onBreadcrumbNavigate={navigate} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={navigation.forward} onInspectorToggle={() => setInspectorOpen((current) => !current)} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} query={query} sort={sort} viewMode={viewMode} />
+        <Toolbar breadcrumbs={breadcrumbs} canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} chatAvailable={Boolean(client)} chatOpen={chatOpen} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={navigation.back} onBreadcrumbNavigate={navigate} onChatToggle={() => setChatOpen((current) => !current)} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={navigation.forward} onInspectorToggle={() => setInspectorOpen((current) => !current)} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} query={query} sort={sort} viewMode={viewMode} />
         <section className={styles.workspace}>
           <section className={styles.browser} onClick={() => setContextMenu(undefined)}>
             <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} selectedNode={selectedNode} viewMode={viewMode} />
           </section>
           {inspectorOpen ? <Inspector node={selectedNode} onToggleTag={(tag) => selectedNode && fileSystem.toggleTag(selectedNode.id, tag)} /> : null}
+          {client ? <ClientChatPanel clientId={client.id} key={client.id} open={chatOpen} /> : null}
         </section>
       </section>
       <CreateItemDialog initialName={dialog?.mode === "rename" ? dialog.node?.name : ""} onCancel={() => setDialog(undefined)} onSubmit={submitDialog} open={Boolean(dialog)} submitLabel={dialog?.mode === "rename" ? "Rename" : dialog?.mode === "create-client" ? "Create Client" : "Create Folder"} title={dialog?.mode === "rename" ? "Rename Item" : dialog?.mode === "create-client" ? "New Client" : "New Folder"} />

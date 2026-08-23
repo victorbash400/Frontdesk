@@ -1,0 +1,34 @@
+.indicator {
+  display: flex;
+  margin: 0;
+  align-items: center;
+  gap: 6px;
+  color: #858581;
+  font-size: 10px;
+}
+
+.indicator svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.7;
+}
+
+.indicator[data-status="running"] span {
+  background: linear-gradient(90deg, #878782 25%, #252523 50%, #878782 75%);
+  background-size: 200% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: indicator 1.4s linear infinite;
+}
+
+.indicator[data-status="error"] {
+  color: #b53a34;
+}
+
+@keyframes indicator {
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indicator[data-status="running"] span { animation: none; }
+}

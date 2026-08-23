@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Columns3, Ellipsis, GalleryHorizontal, LayoutGrid, List, ListFilter, Search, Share, Tag } from "lucide-react";
+import { ChevronLeft, ChevronRight, Columns3, Ellipsis, GalleryHorizontal, LayoutGrid, List, ListFilter, Search, Share, SquarePen, Tag } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import type { BreadcrumbItem, Destination, SortMode, ViewMode } from "../types/filesystem";
@@ -18,6 +18,8 @@ type ToolbarProps = {
   canGoBack: boolean;
   canGoForward: boolean;
   hasSelection: boolean;
+  chatAvailable: boolean;
+  chatOpen: boolean;
   query: string;
   sort: SortMode;
   viewMode: ViewMode;
@@ -26,6 +28,7 @@ type ToolbarProps = {
   onForward: () => void;
   onCreateClient: () => void;
   onCreateFolder: () => void;
+  onChatToggle: () => void;
   onInspectorToggle: () => void;
   onShare: () => void;
   onQueryChange: (query: string) => void;
@@ -33,7 +36,7 @@ type ToolbarProps = {
   onViewModeChange: (mode: ViewMode) => void;
 };
 
-export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, hasSelection, query, sort, viewMode, onBack, onBreadcrumbNavigate, onForward, onCreateClient, onCreateFolder, onInspectorToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
+export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, hasSelection, chatAvailable, chatOpen, query, sort, viewMode, onBack, onBreadcrumbNavigate, onForward, onCreateClient, onCreateFolder, onChatToggle, onInspectorToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
   const canCreateFolder = destination.type === "folder";
 
   function closeMenu(event: MouseEvent<HTMLButtonElement>) {
@@ -63,6 +66,7 @@ export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, has
           </select>
         </label>
         <span className={styles.actions}>
+          {chatAvailable ? <button aria-label="Client chat" aria-pressed={chatOpen} onClick={onChatToggle} title="Client chat" type="button"><SquarePen /></button> : null}
           <button aria-label="Share" disabled={!hasSelection} onClick={onShare} title="Share" type="button"><Share /></button>
           <button aria-label="Tags" disabled={!hasSelection} onClick={onInspectorToggle} title="Tags" type="button"><Tag /></button>
           <details className={styles.more}>

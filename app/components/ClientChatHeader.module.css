@@ -1,0 +1,23 @@
+.header {
+  display: flex;
+  height: 30px;
+  align-items: center;
+  gap: 8px;
+}
+
+.header button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #686864;
+  cursor: pointer;
+}
+
+.header button:hover { background: #eeeeec; color: #252523; }
+.header svg { width: 15px; height: 15px; stroke-width: 1.7; }
+.header strong { font-size: 12px; font-weight: 650; }

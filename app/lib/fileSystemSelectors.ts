@@ -1,4 +1,4 @@
-import type { BreadcrumbItem, Destination, FileSystemNode, SmartLocation, SortMode, TagName } from "../types/filesystem";
+import type { BreadcrumbItem, ClientLocation, Destination, FileSystemNode, SmartLocation, SortMode, TagName } from "../types/filesystem";
 
 const folderKinds = new Set(["client", "folder"]);
 
@@ -11,6 +11,8 @@ export function nodesForDestination(nodes: FileSystemNode[], destination: Destin
 
   if (destination.type === "folder") {
     visible = nodes.filter((node) => node.parentId === destination.id && !node.trashedAt);
+  } else if (destination.type === "client-location") {
+    visible = nodesForClientLocation(nodes, destination.clientId, destination.location);
   } else {
     visible = nodesForLocation(nodes, destination.location);
   }
@@ -29,6 +31,7 @@ export function sortNodes(nodes: FileSystemNode[], sort: SortMode) {
 
 export function destinationTitle(nodes: FileSystemNode[], destination: Destination) {
   if (destination.type === "location") return locationLabels[destination.location];
+  if (destination.type === "client-location") return locationLabels[destination.location];
   return nodes.find((node) => node.id === destination.id)?.name ?? "Clients";
 }
 
@@ -50,6 +53,15 @@ export function breadcrumbsForDestination(nodes: FileSystemNode[], destination: 
     return [{ label: locationLabels[destination.location], destination }];
   }
 
+  if (destination.type === "client-location") {
+    const client = nodes.find((node) => node.id === destination.clientId);
+    return [
+      { label: locationLabels.clients, destination: { type: "location", location: "clients" } },
+      { label: client?.name ?? "Client", destination: { type: "folder", id: destination.clientId } },
+      { label: locationLabels[destination.location], destination },
+    ];
+  }
+
   return [
     { label: locationLabels.clients, destination: { type: "location", location: "clients" } },
     ...folderPath(nodes, destination.id).map((node) => ({
@@ -65,17 +77,53 @@ function nodesForLocation(nodes: FileSystemNode[], location: SmartLocation) {
 
   const active = nodes.filter((node) => !node.trashedAt);
   if (location === "needs-you") return active.filter((node) => node.needsAttention);
+  if (location === "tasks") return active.filter((node) => node.kind === "task");
   if (location === "calls") return active.filter((node) => node.kind === "audio");
-  if (location === "email") return active.filter((node) => node.kind === "email");
+  if (location === "emails") return active.filter((node) => node.kind === "email");
   if (location === "documents") return active.filter((node) => node.kind === "document" || node.kind === "note");
   return [];
+}
+
+function nodesForClientLocation(nodes: FileSystemNode[], clientId: string, location: ClientLocation) {
+  const descendants = descendantIds(nodes, clientId);
+  return nodes.filter((node) => descendants.has(node.id) && !node.trashedAt && matchesClientLocation(node, location));
+}
+
+function descendantIds(nodes: FileSystemNode[], rootId: string) {
+  const children = new Map<string, string[]>();
+  for (const node of nodes) {
+    if (!node.parentId) continue;
+    const siblings = children.get(node.parentId) ?? [];
+    siblings.push(node.id);
+    children.set(node.parentId, siblings);
+  }
+
+  const ids = new Set<string>();
+  const pending = [...(children.get(rootId) ?? [])];
+  while (pending.length) {
+    const id = pending.pop();
+    if (!id || ids.has(id)) continue;
+    ids.add(id);
+    for (const childId of children.get(id) ?? []) {
+      pending.push(childId);
+    }
+  }
+  return ids;
+}
+
+function matchesClientLocation(node: FileSystemNode, location: ClientLocation) {
+  if (location === "tasks") return node.kind === "task";
+  if (location === "calls") return node.kind === "audio";
+  if (location === "emails") return node.kind === "email";
+  return node.kind === "document" || node.kind === "note";
 }
 
 export const locationLabels: Record<SmartLocation, string> = {
   clients: "Clients",
   "needs-you": "Needs You",
+  tasks: "Tasks",
   calls: "Calls",
-  email: "Email",
+  emails: "Emails",
   documents: "Documents",
   trash: "Trash",
   plugins: "Plugins",

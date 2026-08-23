@@ -1,0 +1,49 @@
+.composer {
+  display: grid;
+  min-height: 108px;
+  padding: 11px 12px 9px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  border: 1px solid #dededc;
+  border-radius: 17px;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 10%);
+}
+
+.composer textarea {
+  width: 100%;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #252523;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.composer textarea::placeholder { color: #92928d; }
+
+.composer footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.composer label,
+.composer button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.composer label { color: #686864; }
+.composer label:hover { background: #efefed; }
+.composer label input { display: none; }
+.composer button { background: #2b2b2b; color: #fff; }
+.composer button:disabled { background: #d5d5d2; cursor: default; }
+.composer svg { width: 15px; height: 15px; stroke-width: 1.8; }

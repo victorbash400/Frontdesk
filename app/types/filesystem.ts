@@ -9,10 +9,11 @@ export const tagColors = {
 } as const;
 
 export type TagName = keyof typeof tagColors;
-export type NodeKind = "client" | "folder" | "audio" | "email" | "document" | "request" | "note";
+export type NodeKind = "client" | "folder" | "task" | "audio" | "email" | "document" | "request" | "note";
 export type ViewMode = "icons" | "list" | "columns" | "gallery";
 export type SortMode = "name-asc" | "name-desc" | "date-desc" | "date-asc";
-export type SmartLocation = "clients" | "needs-you" | "calls" | "email" | "documents" | "trash" | "plugins" | "skills";
+export type SmartLocation = "clients" | "needs-you" | "tasks" | "calls" | "emails" | "documents" | "trash" | "plugins" | "skills";
+export type ClientLocation = "tasks" | "calls" | "emails" | "documents";
 
 export type FileSystemNode = {
   id: string;
@@ -29,7 +30,8 @@ export type FileSystemNode = {
 
 export type Destination =
   | { type: "location"; location: SmartLocation }
-  | { type: "folder"; id: string };
+  | { type: "folder"; id: string }
+  | { type: "client-location"; clientId: string; location: ClientLocation };
 
 export type BreadcrumbItem = {
   label: string;

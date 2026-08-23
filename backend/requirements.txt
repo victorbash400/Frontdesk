@@ -6,3 +6,4 @@ pydantic-settings
 boto3
 httpx
 pytest
+strands-agents

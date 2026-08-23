@@ -1,0 +1,57 @@
+.drawer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 3;
+  display: grid;
+  width: min(232px, calc(100% - 24px));
+  padding: 12px;
+  grid-template-rows: 30px 34px 34px minmax(0, 1fr);
+  gap: 8px;
+  border-radius: 13px;
+  background: #f5f5f3;
+  box-shadow: 10px 0 28px rgb(0 0 0 / 10%);
+  opacity: 0;
+  transform: translateX(-102%);
+  pointer-events: none;
+  transition: transform 240ms cubic-bezier(.22, 1, .36, 1), opacity 160ms ease;
+}
+
+.drawer[data-open="true"] { opacity: 1; transform: translateX(0); pointer-events: auto; }
+.drawer header, .drawer button, .search, .row { display: flex; align-items: center; }
+.drawer header { justify-content: space-between; }
+.drawer header strong { font-size: 12px; font-weight: 650; }
+.drawer button { border: 0; background: transparent; color: #333330; cursor: pointer; }
+.drawer header button { width: 26px; height: 26px; padding: 0; justify-content: center; border-radius: 7px; }
+.drawer header button:hover, .drawer nav button:hover { background: #e8e8e5; }
+.drawer svg { width: 15px; height: 15px; stroke-width: 1.7; }
+
+.primary {
+  height: 34px;
+  padding: 0 8px;
+  gap: 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  text-align: left;
+}
+.primary:hover { background: #e8e8e5; }
+
+.search {
+  height: 32px;
+  padding: 0 9px;
+  gap: 7px;
+  border-radius: 8px;
+  background: #fff;
+  color: #858581;
+}
+.search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; font-size: 11px; }
+.drawer nav { min-height: 0; overflow-y: auto; }
+.row { min-width: 0; height: 32px; border-radius: 8px; }
+.row[data-active="true"] { background: #e4e4e1; }
+.row > button:first-child { min-width: 0; height: 100%; padding: 0 8px; flex: 1; overflow: hidden; font-size: 11px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.row > button:last-child { display: grid; width: 28px; height: 28px; padding: 0; place-items: center; border-radius: 7px; opacity: 0; }
+.row:hover > button:last-child, .row:focus-within > button:last-child { opacity: 1; }
+.row > button:last-child svg { width: 13px; height: 13px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer { transition: none; }
+}

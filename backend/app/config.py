@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{PROJECT_ROOT / 'backend' / 'operator.db'}"
     s3_bucket: str = ""
     aws_region: str = "af-south-1"
+    strands_region: str = "us-west-2"
+    strands_model_id: str = "global.anthropic.claude-sonnet-4-6"
     cors_origins: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(
