@@ -99,7 +99,7 @@ export function OperatorShell() {
         <Toolbar canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={navigation.back} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={navigation.forward} onInspectorToggle={() => setInspectorOpen((current) => !current)} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} query={query} sort={sort} title={title} viewMode={viewMode} />
         <section className={styles.workspace}>
           <section className={styles.browser} onClick={() => setContextMenu(undefined)}>
-            <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} onSelect={(node) => setSelectedId(node.id)} selectedNode={selectedNode} viewMode={viewMode} />
+            <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} selectedNode={selectedNode} viewMode={viewMode} />
           </section>
           {inspectorOpen ? <Inspector node={selectedNode} onToggleTag={(tag) => selectedNode && fileSystem.toggleTag(selectedNode.id, tag)} /> : null}
         </section>

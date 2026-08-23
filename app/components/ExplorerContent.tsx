@@ -14,12 +14,11 @@ type ExplorerContentProps = {
   selectedNode?: FileSystemNode;
   viewMode: ViewMode;
   onOpen: ItemHandler;
-  onSelect: ItemHandler;
   onContextMenu: (event: MouseEvent, node: FileSystemNode) => void;
 };
 
-export function ExplorerContent({ nodes, selectedNode, viewMode, onOpen, onSelect, onContextMenu }: ExplorerContentProps) {
-  const shared = { nodes, onOpen, onSelect, onContextMenu };
+export function ExplorerContent({ nodes, selectedNode, viewMode, onOpen, onContextMenu }: ExplorerContentProps) {
+  const shared = { nodes, onOpen, onContextMenu };
   return (
     <section className={styles.content}>
       {viewMode === "icons" ? <IconView {...shared} selectedId={selectedNode?.id} /> : null}

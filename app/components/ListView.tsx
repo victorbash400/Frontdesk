@@ -6,13 +6,13 @@ import styles from "./ListView.module.css";
 
 type ItemHandler = (node: FileSystemNode) => void;
 
-export function ListView({ nodes, selectedId, onOpen, onSelect, onContextMenu }: { nodes: FileSystemNode[]; selectedId?: string; onOpen: ItemHandler; onSelect: ItemHandler; onContextMenu: (event: MouseEvent, node: FileSystemNode) => void }) {
+export function ListView({ nodes, selectedId, onOpen, onContextMenu }: { nodes: FileSystemNode[]; selectedId?: string; onOpen: ItemHandler; onContextMenu: (event: MouseEvent, node: FileSystemNode) => void }) {
   return (
     <table className={styles.table}>
       <thead><tr><th>Name</th><th>Date Modified</th><th>Kind</th></tr></thead>
       <tbody>
         {nodes.map((node) => (
-          <tr aria-selected={selectedId === node.id} key={node.id} onClick={() => onSelect(node)} onContextMenu={(event) => onContextMenu(event, node)} onDoubleClick={() => onOpen(node)}>
+          <tr aria-selected={selectedId === node.id} key={node.id} onClick={() => onOpen(node)} onContextMenu={(event) => onContextMenu(event, node)}>
             <td><FileIcon kind={node.kind} size="small" /><span>{node.name}</span></td>
             <td>{formatDate(node.updatedAt)}</td>
             <td>{kindLabel(node.kind)}</td>
