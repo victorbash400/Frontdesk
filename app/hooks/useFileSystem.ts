@@ -56,12 +56,14 @@ export function useFileSystem() {
       needsAttention: false,
       trashedAt: null,
     };
-    commit((current) => ({ ...current, nodes: [...current.nodes, node] }));
+    const additions = kind === "client" ? [node, createClientProfile(node)] : [node];
+    commit((current) => ({ ...current, nodes: [...current.nodes, ...additions] }));
     return node;
   }, [commit, data.nodes]);
 
-  const updateNode = useCallback((id: string, update: Partial<Pick<FileSystemNode, "name" | "parentId" | "shared" | "needsAttention" | "trashedAt">>) => {
+  const updateNode = useCallback((id: string, update: Partial<Pick<FileSystemNode, "name" | "parentId" | "shared" | "needsAttention" | "trashedAt" | "content">>) => {
     const currentNode = data.nodes.find((node) => node.id === id);
+    if (currentNode?.protected && (update.name !== undefined || update.parentId !== undefined || update.trashedAt !== undefined)) throw new Error("Client Profile cannot be renamed, moved, or deleted.");
     const parentId = update.parentId === undefined ? currentNode?.parentId : update.parentId;
     if (update.name && currentNode && parentId !== undefined && hasSiblingName(data.nodes, update.name, parentId, id)) {
       throw new Error(`“${update.name}” already exists in this folder.`);
@@ -82,6 +84,7 @@ export function useFileSystem() {
   }, [commit]);
 
   const setTrashed = useCallback((id: string, trashed: boolean) => {
+    if (data.nodes.find((node) => node.id === id)?.protected) throw new Error("Client Profile cannot be deleted.");
     commit((current) => {
       const affected = new Set([id]);
       let changed = true;
@@ -100,9 +103,26 @@ export function useFileSystem() {
         nodes: current.nodes.map((node) => affected.has(node.id) ? { ...node, trashedAt: trashed ? timestamp : null, updatedAt: timestamp } : node),
       };
     });
-  }, [commit]);
+  }, [commit, data.nodes]);
 
   return { data, loaded, error, createNode, updateNode, toggleTag, setTrashed };
+}
+
+function createClientProfile(client: FileSystemNode): FileSystemNode {
+  return {
+    id: crypto.randomUUID(),
+    parentId: client.id,
+    name: "Client Profile",
+    kind: "profile",
+    createdAt: client.createdAt,
+    updatedAt: client.updatedAt,
+    tags: [],
+    shared: false,
+    needsAttention: false,
+    trashedAt: null,
+    content: "",
+    protected: true,
+  };
 }
 
 function messageFrom(reason: unknown, fallback: string) {

@@ -16,13 +16,13 @@ type ItemContextMenuProps = {
 
 export function ItemContextMenu({ state, onClose, onRename, onShareToggle, onAttentionToggle, onTrashToggle }: ItemContextMenuProps) {
   const trashed = Boolean(state.node.trashedAt);
+  const protectedItem = Boolean(state.node.protected);
   return (
     <menu className={styles.menu} onMouseLeave={onClose} style={{ left: Math.min(state.x, window.innerWidth - 190), top: Math.min(state.y, window.innerHeight - 190) }}>
-      <button onClick={onRename} type="button"><Pencil />Rename</button>
+      {!protectedItem ? <button onClick={onRename} type="button"><Pencil />Rename</button> : null}
       <button onClick={onShareToggle} type="button"><Share2 />{state.node.shared ? "Remove from Shared" : "Add to Shared"}</button>
       <button onClick={onAttentionToggle} type="button"><CircleAlert />{state.node.needsAttention ? "Clear Needs You" : "Mark as Needs You"}</button>
-      <hr />
-      <button className={trashed ? undefined : styles.destructive} onClick={onTrashToggle} type="button">{trashed ? <RotateCcw /> : <Trash2 />}{trashed ? "Restore" : "Move to Trash"}</button>
+      {!protectedItem ? <><hr /><button className={trashed ? undefined : styles.destructive} onClick={onTrashToggle} type="button">{trashed ? <RotateCcw /> : <Trash2 />}{trashed ? "Restore" : "Move to Trash"}</button></> : null}
     </menu>
   );
 }

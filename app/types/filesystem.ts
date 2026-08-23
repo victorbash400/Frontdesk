@@ -9,7 +9,7 @@ export const tagColors = {
 } as const;
 
 export type TagName = keyof typeof tagColors;
-export type NodeKind = "client" | "folder" | "task" | "audio" | "email" | "document" | "request" | "note";
+export type NodeKind = "client" | "folder" | "profile" | "task" | "audio" | "email" | "document" | "request" | "note";
 export type ViewMode = "icons" | "list" | "columns" | "gallery";
 export type SortMode = "name-asc" | "name-desc" | "date-desc" | "date-asc";
 export type SmartLocation = "clients" | "needs-you" | "tasks" | "calls" | "emails" | "documents" | "trash" | "plugins" | "skills";
@@ -26,6 +26,8 @@ export type FileSystemNode = {
   shared: boolean;
   needsAttention: boolean;
   trashedAt: string | null;
+  content?: string;
+  protected?: boolean;
 };
 
 export type Destination =

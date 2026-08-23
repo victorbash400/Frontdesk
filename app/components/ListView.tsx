@@ -28,7 +28,7 @@ function formatDate(value: string) {
 }
 
 function kindLabel(kind: FileSystemNode["kind"]) {
-  return kind === "client" ? "Client folder" : kind === "folder" ? "Folder" : kind[0].toUpperCase() + kind.slice(1);
+  return kind === "client" ? "Client folder" : kind === "folder" ? "Folder" : kind === "profile" ? "Client profile" : kind[0].toUpperCase() + kind.slice(1);
 }
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });

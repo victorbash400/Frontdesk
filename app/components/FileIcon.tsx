@@ -1,4 +1,4 @@
-import { FileAudio, FileText, ListTodo, Mail, MessageSquareText, NotebookPen } from "lucide-react";
+import { FileAudio, FileText, FileUser, ListTodo, Mail, MessageSquareText, NotebookPen } from "lucide-react";
 
 import type { NodeKind } from "../types/filesystem";
 import styles from "./FileIcon.module.css";
@@ -29,6 +29,6 @@ export function FileIcon({ kind, size = "large" }: FileIconProps) {
     );
   }
 
-  const Icon = kind === "task" ? ListTodo : kind === "audio" ? FileAudio : kind === "email" ? Mail : kind === "request" ? MessageSquareText : kind === "note" ? NotebookPen : FileText;
+  const Icon = kind === "profile" ? FileUser : kind === "task" ? ListTodo : kind === "audio" ? FileAudio : kind === "email" ? Mail : kind === "request" ? MessageSquareText : kind === "note" ? NotebookPen : FileText;
   return <Icon aria-hidden="true" className={styles.file} data-size={size} />;
 }

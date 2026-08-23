@@ -73,7 +73,7 @@ export function breadcrumbsForDestination(nodes: FileSystemNode[], destination: 
 
 function nodesForLocation(nodes: FileSystemNode[], location: SmartLocation) {
   if (location === "clients") return nodes.filter((node) => node.kind === "client" && !node.trashedAt);
-  if (location === "trash") return nodes.filter((node) => Boolean(node.trashedAt));
+  if (location === "trash") return nodes.filter((node) => Boolean(node.trashedAt) && !node.protected);
 
   const active = nodes.filter((node) => !node.trashedAt);
   if (location === "needs-you") return active.filter((node) => node.needsAttention);
