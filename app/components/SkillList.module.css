@@ -1,4 +1,4 @@
-.list { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.list { min-height: 0; }
 .list > header, .list > button { display: grid; grid-template-columns: minmax(180px, .9fr) minmax(240px, 1.5fr) 110px; align-items: center; gap: 18px; }
 .list > header { height: 32px; padding: 0 12px; color: #8c8c87; font-size: 10px; }
 .list > button { width: 100%; min-height: 46px; padding: 6px 12px; border: 0; border-radius: 9px; background: transparent; color: #343431; text-align: left; cursor: pointer; }

@@ -31,3 +31,23 @@ export const pluginDirectory: PluginDefinition[] = [
   { id: "webhooks", name: "Webhook MCP", description: "Receive signed events from external tools", category: "mcps", color: "#9765bb", icon: Webhook },
   { id: "workflows", name: "Workflow MCP", description: "Run approved multi-step client workflows", category: "mcps", color: "#bc7348", icon: Workflow },
 ];
+
+export const pluginPermissions: Record<string, string[]> = {
+  gmail: ["Read client email", "Create drafts and organize messages"],
+  "google-drive": ["Read selected files", "Create and update shared documents"],
+  slack: ["Read selected channels", "Draft and send approved messages"],
+  calendar: ["Read calendars", "Create and update approved events"],
+  notion: ["Read selected workspaces", "Create and update pages"],
+  hubspot: ["Read contacts and companies", "Update approved CRM records"],
+  salesforce: ["Read client records", "Update approved activity"],
+  github: ["Read repositories and issues", "Create approved issues and comments"],
+  "web-search": ["Search the public web", "Open and read search results"],
+  dropbox: ["Read selected folders", "Create and update shared files"],
+  asana: ["Read projects and tasks", "Create and update assigned work"],
+  airtable: ["Read selected bases", "Create and update records"],
+  linear: ["Read teams and issues", "Create and update approved issues"],
+  zoom: ["Read scheduled meetings", "Access approved meeting details"],
+  "client-data": ["Read approved client sources", "Use data inside client tasks"],
+  webhooks: ["Receive signed external events", "Attach events to the correct client"],
+  workflows: ["Run approved workflows", "Read workflow results"],
+};

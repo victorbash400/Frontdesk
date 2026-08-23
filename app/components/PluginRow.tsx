@@ -16,7 +16,7 @@ export function PluginRow({ enabled, plugin, onToggle }: PluginRowProps) {
         <strong>{plugin.name}</strong>
         <small>{plugin.description}</small>
       </span>
-      <button aria-label={`${enabled ? "Remove" : "Add"} ${plugin.name}`} aria-checked={enabled} className={styles.switch} onClick={onToggle} role="switch" title={`${enabled ? "Remove" : "Add"} ${plugin.name}`} type="button"><span /></button>
+      <button aria-label={`${enabled ? "Disconnect" : "Connect"} ${plugin.name}`} aria-checked={enabled} className={styles.switch} onClick={onToggle} role="switch" title={`${enabled ? "Disconnect" : "Connect"} ${plugin.name}`} type="button"><span /></button>
     </article>
   );
 }

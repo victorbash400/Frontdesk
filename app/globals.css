@@ -1,5 +1,22 @@
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #c4c4bf transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: #c4c4bf;
 }
 
 html,

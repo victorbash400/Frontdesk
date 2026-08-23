@@ -4,7 +4,8 @@ import { Search } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 
 import { usePluginDirectory } from "../hooks/usePluginDirectory";
-import { pluginDirectory, type PluginCategory } from "../lib/pluginDirectory";
+import { pluginDirectory, type PluginCategory, type PluginDefinition } from "../lib/pluginDirectory";
+import { PluginConnectionDialog } from "./PluginConnectionDialog";
 import { PluginRow } from "./PluginRow";
 import styles from "./PluginStore.module.css";
 
@@ -17,6 +18,7 @@ const categories: Array<{ id: PluginCategory; label: string }> = [
 export function PluginStore() {
   const { enabledIds, error, loaded, toggle } = usePluginDirectory();
   const [category, setCategory] = useState<PluginCategory>("plugins");
+  const [pendingPlugin, setPendingPlugin] = useState<PluginDefinition>();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase());
   const visible = pluginDirectory.filter((plugin) => plugin.category === category && (!deferredQuery || `${plugin.name} ${plugin.description}`.toLocaleLowerCase().includes(deferredQuery)));
@@ -37,8 +39,18 @@ export function PluginStore() {
       </nav>
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
       <section className={styles.list}>
-        {visible.map((plugin) => <PluginRow enabled={enabledIds.has(plugin.id)} key={plugin.id} onToggle={() => toggle(plugin.id)} plugin={plugin} />)}
+        {visible.map((plugin) => <PluginRow enabled={enabledIds.has(plugin.id)} key={plugin.id} onToggle={() => setPendingPlugin(plugin)} plugin={plugin} />)}
       </section>
+      <PluginConnectionDialog
+        connected={pendingPlugin ? enabledIds.has(pendingPlugin.id) : false}
+        onCancel={() => setPendingPlugin(undefined)}
+        onConfirm={() => {
+          if (!pendingPlugin) return;
+          toggle(pendingPlugin.id);
+          setPendingPlugin(undefined);
+        }}
+        plugin={pendingPlugin}
+      />
     </section>
   );
 }

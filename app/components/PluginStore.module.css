@@ -1,10 +1,8 @@
 .store {
   width: min(760px, calc(100% - 64px));
-  height: 100%;
+  min-height: 100%;
   margin: 0 auto;
   padding: 34px 0 48px;
-  overflow-y: auto;
-  scrollbar-width: thin;
 }
 
 .store > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
@@ -18,7 +16,7 @@
 .store > nav button { height: 30px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: #999994; font-size: 12px; cursor: pointer; }
 .store > nav button[aria-current="page"] { background: #eeeeec; color: #343431; }
 .store > nav small { margin-left: 3px; color: inherit; font-size: 10px; }
-.list { padding: 0 8px; }
+.list { overflow: hidden; border: 1px solid #e3e3df; border-radius: 18px; background: #fff; }
 .error { margin: 0; color: #a5322d; font-size: 11px; }
 
 @media (max-width: 760px) {
