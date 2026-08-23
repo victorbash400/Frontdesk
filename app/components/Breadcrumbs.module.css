@@ -1,0 +1,53 @@
+.breadcrumbs {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  overflow: hidden;
+}
+
+.crumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  color: #777;
+}
+
+.breadcrumbs .crumb > svg {
+  width: 13px;
+  min-width: 13px;
+  height: 13px;
+  margin: 0 2px;
+  stroke-width: 1.7;
+}
+
+.breadcrumbs .crumb > button,
+.breadcrumbs .crumb > strong {
+  overflow: hidden;
+  max-width: 180px;
+  height: 28px;
+  margin: 0;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #6d6d69;
+  font-size: 13px;
+  font-weight: 520;
+  line-height: 28px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumbs .crumb > button {
+  cursor: pointer;
+}
+
+.breadcrumbs .crumb > button:hover {
+  background: #f1f1f1;
+  color: #242422;
+}
+
+.breadcrumbs .crumb > strong {
+  color: #20201e;
+  font-weight: 650;
+}

@@ -31,6 +31,11 @@ export type Destination =
   | { type: "location"; location: SmartLocation }
   | { type: "folder"; id: string };
 
+export type BreadcrumbItem = {
+  label: string;
+  destination: Destination;
+};
+
 export type FileSystemData = {
   version: 1;
   nodes: FileSystemNode[];

@@ -8,15 +8,6 @@
   background: #fff;
 }
 
-.toolbar h1 {
-  overflow: hidden;
-  margin: 0;
-  font-size: 14px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .toolbar nav,
 .toolbar button,
 .sort,
@@ -196,7 +187,7 @@
     grid-template-columns: auto 1fr;
   }
 
-  .toolbar h1 {
+  .path {
     display: none;
   }
 

@@ -4,7 +4,7 @@ import { useDeferredValue, useMemo, useState, type KeyboardEvent, type MouseEven
 
 import { useFileSystem } from "../hooks/useFileSystem";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
-import { destinationTitle, isContainer, nodesForDestination, sortNodes } from "../lib/fileSystemSelectors";
+import { breadcrumbsForDestination, isContainer, nodesForDestination, sortNodes } from "../lib/fileSystemSelectors";
 import { tagColors, type FileSystemNode, type SortMode, type ViewMode } from "../types/filesystem";
 import { CreateItemDialog } from "./CreateItemDialog";
 import { ExplorerContent } from "./ExplorerContent";
@@ -35,7 +35,7 @@ export function OperatorShell() {
   }, [deferredQuery, fileSystem.data.nodes, navigation.destination, sort]);
 
   const selectedNode = visibleNodes.find((node) => node.id === selectedId);
-  const title = destinationTitle(fileSystem.data.nodes, navigation.destination);
+  const breadcrumbs = useMemo(() => breadcrumbsForDestination(fileSystem.data.nodes, navigation.destination), [fileSystem.data.nodes, navigation.destination]);
   const canCreate = navigation.destination.type === "folder" || navigation.destination.type === "location" && navigation.destination.location === "clients";
 
   function navigate(destination: Parameters<typeof navigation.navigate>[0]) {
@@ -96,7 +96,7 @@ export function OperatorShell() {
     <main className={styles.shell} onKeyDown={handleKeyboard} style={tagVariables} tabIndex={-1}>
       <Sidebar destination={navigation.destination} onCreateClient={() => setDialog({ mode: "create-client" })} onNavigate={(location) => navigate({ type: "location", location })} />
       <section className={styles.explorer}>
-        <Toolbar canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={navigation.back} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={navigation.forward} onInspectorToggle={() => setInspectorOpen((current) => !current)} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} query={query} sort={sort} title={title} viewMode={viewMode} />
+        <Toolbar breadcrumbs={breadcrumbs} canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={navigation.back} onBreadcrumbNavigate={navigate} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={navigation.forward} onInspectorToggle={() => setInspectorOpen((current) => !current)} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} query={query} sort={sort} viewMode={viewMode} />
         <section className={styles.workspace}>
           <section className={styles.browser} onClick={() => setContextMenu(undefined)}>
             <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} selectedNode={selectedNode} viewMode={viewMode} />

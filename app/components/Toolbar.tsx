@@ -1,7 +1,8 @@
 import { ChevronLeft, ChevronRight, Columns3, Ellipsis, GalleryHorizontal, LayoutGrid, List, ListFilter, Search, Share, Tag } from "lucide-react";
 import type { MouseEvent } from "react";
 
-import type { Destination, SortMode, ViewMode } from "../types/filesystem";
+import type { BreadcrumbItem, Destination, SortMode, ViewMode } from "../types/filesystem";
+import { Breadcrumbs } from "./Breadcrumbs";
 import styles from "./Toolbar.module.css";
 
 const viewModes: Array<{ mode: ViewMode; label: string; icon: typeof LayoutGrid }> = [
@@ -13,7 +14,7 @@ const viewModes: Array<{ mode: ViewMode; label: string; icon: typeof LayoutGrid 
 
 type ToolbarProps = {
   destination: Destination;
-  title: string;
+  breadcrumbs: BreadcrumbItem[];
   canGoBack: boolean;
   canGoForward: boolean;
   hasSelection: boolean;
@@ -21,6 +22,7 @@ type ToolbarProps = {
   sort: SortMode;
   viewMode: ViewMode;
   onBack: () => void;
+  onBreadcrumbNavigate: (destination: Destination) => void;
   onForward: () => void;
   onCreateClient: () => void;
   onCreateFolder: () => void;
@@ -31,7 +33,7 @@ type ToolbarProps = {
   onViewModeChange: (mode: ViewMode) => void;
 };
 
-export function Toolbar({ destination, title, canGoBack, canGoForward, hasSelection, query, sort, viewMode, onBack, onForward, onCreateClient, onCreateFolder, onInspectorToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
+export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, hasSelection, query, sort, viewMode, onBack, onBreadcrumbNavigate, onForward, onCreateClient, onCreateFolder, onInspectorToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
   const canCreateFolder = destination.type === "folder";
 
   function closeMenu(event: MouseEvent<HTMLButtonElement>) {
@@ -44,7 +46,7 @@ export function Toolbar({ destination, title, canGoBack, canGoForward, hasSelect
         <button aria-label="Back" disabled={!canGoBack} onClick={onBack} type="button"><ChevronLeft /></button>
         <button aria-label="Forward" disabled={!canGoForward} onClick={onForward} type="button"><ChevronRight /></button>
       </nav>
-      <h1>{title}</h1>
+      <Breadcrumbs className={styles.path} items={breadcrumbs} onNavigate={onBreadcrumbNavigate} />
       <nav className={styles.tools} aria-label="View and filesystem actions">
         <span className={styles.viewModes}>
           {viewModes.map(({ mode, label, icon: Icon }) => (

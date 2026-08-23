@@ -1,4 +1,4 @@
-import type { Destination, FileSystemNode, SmartLocation, SortMode, TagName } from "../types/filesystem";
+import type { BreadcrumbItem, Destination, FileSystemNode, SmartLocation, SortMode, TagName } from "../types/filesystem";
 
 const folderKinds = new Set(["client", "folder"]);
 
@@ -43,6 +43,20 @@ export function folderPath(nodes: FileSystemNode[], folderId: string) {
   }
 
   return path;
+}
+
+export function breadcrumbsForDestination(nodes: FileSystemNode[], destination: Destination): BreadcrumbItem[] {
+  if (destination.type === "location") {
+    return [{ label: locationLabels[destination.location], destination }];
+  }
+
+  return [
+    { label: locationLabels.clients, destination: { type: "location", location: "clients" } },
+    ...folderPath(nodes, destination.id).map((node) => ({
+      label: node.name,
+      destination: { type: "folder" as const, id: node.id },
+    })),
+  ];
 }
 
 function nodesForLocation(nodes: FileSystemNode[], location: SmartLocation) {
