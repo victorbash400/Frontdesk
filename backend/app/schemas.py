@@ -24,6 +24,13 @@ class AccountRead(BaseModel):
     name: str
 
 
+class ChatRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128)
+    chat_id: str = Field(min_length=1, max_length=128)
+    message: str = Field(min_length=1, max_length=20_000)
+    create_title: bool = False
+
+
 class NodeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     kind: NodeKind

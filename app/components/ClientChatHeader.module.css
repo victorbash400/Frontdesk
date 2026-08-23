@@ -20,4 +20,4 @@
 
 .header button:hover { background: #eeeeec; color: #252523; }
 .header svg { width: 15px; height: 15px; stroke-width: 1.7; }
-.header strong { font-size: 12px; font-weight: 650; }
+.header strong { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }

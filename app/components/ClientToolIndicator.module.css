@@ -1,34 +1,6 @@
-.indicator {
-  display: flex;
-  margin: 0;
-  align-items: center;
-  gap: 6px;
-  color: #858581;
-  font-size: 10px;
-}
-
-.indicator svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 1.7;
-}
-
-.indicator[data-status="running"] span {
-  background: linear-gradient(90deg, #878782 25%, #252523 50%, #878782 75%);
-  background-size: 200% 100%;
-  background-clip: text;
-  color: transparent;
-  animation: indicator 1.4s linear infinite;
-}
-
-.indicator[data-status="error"] {
-  color: #b53a34;
-}
-
-@keyframes indicator {
-  to { background-position: -200% 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .indicator[data-status="running"] span { animation: none; }
-}
+.tool { position: relative; display: inline-flex; width: fit-content; max-width: 100%; margin: 3px 0; align-items: center; gap: 6px; color: #59605b; font-size: 10px; overflow: hidden; }
+.tool strong { overflow: hidden; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.tool[data-status="error"] { color: #9d3f35; }
+.tool[data-status="running"]::after { position: absolute; inset: -4px auto -4px -45%; width: 42%; background: linear-gradient(100deg, transparent, rgb(255 255 255 / 96%), transparent); content: ""; pointer-events: none; animation: shimmer 1.35s ease-in-out infinite; }
+@keyframes shimmer { to { transform: translateX(350%); } }
+@media (prefers-reduced-motion: reduce) { .tool[data-status="running"]::after { animation: none; } }

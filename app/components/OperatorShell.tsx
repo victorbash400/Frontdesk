@@ -141,7 +141,7 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
             {!utilityView ? <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} onRename={(node) => setDialog({ mode: "rename", node })} onTrashToggle={(node) => { fileSystem.setTrashed(node.id, !node.trashedAt); setSelectedId(undefined); }} selectedNode={selectedNode} viewMode={viewMode} /> : null}
           </section>
           {inspectorOpen && !utilityView ? <Inspector node={selectedNode} onToggleTag={(tag) => selectedNode && fileSystem.toggleTag(selectedNode.id, tag)} /> : null}
-          {client ? <ClientChatPanel clientId={client.id} key={client.id} open={chatOpen} /> : null}
+          {client ? <ClientChatPanel accountId={account.id} clientId={client.id} key={client.id} open={chatOpen} /> : null}
         </section>
       </section>
       <CreateItemDialog error={dialogError} initialName={dialog?.mode === "rename" ? dialog.node?.name : ""} onCancel={() => { setDialog(undefined); setDialogError(undefined); }} onNameChange={() => setDialogError(undefined)} onSubmit={submitDialog} open={Boolean(dialog)} submitLabel={dialog?.mode === "rename" ? "Rename" : dialog?.mode === "create-client" ? "Create Client" : "Create Folder"} title={dialog?.mode === "rename" ? "Rename Item" : dialog?.mode === "create-client" ? "New Client" : "New Folder"} />

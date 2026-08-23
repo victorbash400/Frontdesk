@@ -13,6 +13,7 @@ out/
 backend/.venv/
 backend/.env
 backend/*.db
+backend/.sessions/
 __pycache__/
 *.py[cod]
 

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +14,7 @@ class Settings(BaseSettings):
     aws_region: str = "af-south-1"
     strands_region: str = "us-west-2"
     strands_model_id: str = "global.anthropic.claude-sonnet-4-6"
+    aws_profile: str = Field(default="", validation_alias=AliasChoices("OPERATOR_AWS_PROFILE", "AWS_PROFILE"))
     cors_origins: str = "http://localhost:3000"
     internal_secret: str = "operator-local-development-secret"
 

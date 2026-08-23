@@ -3,13 +3,15 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from starlette.responses import StreamingResponse
 
 from .accounts import authenticate_account, create_account, ensure_demo_account
 from .auth import require_account_id
+from .chat_stream import stream_agent_events
 from .config import get_settings
 from .database import SessionLocal, get_session, initialize_database
 from .repository import create_node, list_nodes, search_nodes, set_trashed, update_node
-from .schemas import AccountCreate, AccountCredentials, AccountRead, HealthRead, NodeCreate, NodeRead, NodeUpdate
+from .schemas import AccountCreate, AccountCredentials, AccountRead, ChatRequest, HealthRead, NodeCreate, NodeRead, NodeUpdate
 
 
 @asynccontextmanager
@@ -51,6 +53,18 @@ def authenticate(body: AccountCredentials, session: Session = Depends(get_sessio
     if not account:
         raise HTTPException(401, "Email or password is incorrect.")
     return AccountRead.model_validate(account, from_attributes=True)
+
+
+@app.post("/api/chat/stream")
+def chat_stream(body: ChatRequest, account_id: str = Depends(require_account_id)) -> StreamingResponse:
+    events = stream_agent_events(
+        account_id=account_id,
+        client_id=body.client_id,
+        chat_id=body.chat_id,
+        message=body.message,
+        create_title=body.create_title,
+    )
+    return StreamingResponse(events, media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/nodes", response_model=list[NodeRead])

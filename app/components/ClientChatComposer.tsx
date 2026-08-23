@@ -4,10 +4,11 @@ import { useState, type FormEvent, type KeyboardEvent } from "react";
 import styles from "./ClientChatComposer.module.css";
 
 type ClientChatComposerProps = {
+  disabled: boolean;
   onSend: (text: string) => void;
 };
 
-export function ClientChatComposer({ onSend }: ClientChatComposerProps) {
+export function ClientChatComposer({ disabled, onSend }: ClientChatComposerProps) {
   const [text, setText] = useState("");
 
   function submit(event: FormEvent) {
@@ -27,13 +28,13 @@ export function ClientChatComposer({ onSend }: ClientChatComposerProps) {
 
   return (
     <form className={styles.composer} onSubmit={submit}>
-      <textarea aria-label="Message Operator" onChange={(event) => setText(event.target.value)} onKeyDown={handleKeyDown} placeholder="Message Operator" rows={3} value={text} />
+      <textarea aria-label="Message Operator" disabled={disabled} onChange={(event) => setText(event.target.value)} onKeyDown={handleKeyDown} placeholder="Message Operator" rows={3} value={text} />
       <footer>
         <label aria-label="Attach files" title="Attach files">
           <Paperclip aria-hidden="true" />
           <input multiple type="file" />
         </label>
-        <button aria-label="Send message" disabled={!text.trim()} title="Send message" type="submit"><ArrowUp aria-hidden="true" /></button>
+        <button aria-label="Send message" disabled={disabled || !text.trim()} title="Send message" type="submit"><ArrowUp aria-hidden="true" /></button>
       </footer>
     </form>
   );

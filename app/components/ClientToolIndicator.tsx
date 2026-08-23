@@ -8,10 +8,5 @@ type ClientToolIndicatorProps = {
 };
 
 export function ClientToolIndicator({ item }: ClientToolIndicatorProps) {
-  return (
-    <p className={styles.indicator} data-status={item.status}>
-      <SquareTerminal aria-hidden="true" />
-      <span>{item.label}</span>
-    </p>
-  );
+  return <span className={styles.tool} data-status={item.status}><SquareTerminal aria-hidden="true" size={14} /><strong>{item.name.replaceAll("_", " ")}</strong></span>;
 }
