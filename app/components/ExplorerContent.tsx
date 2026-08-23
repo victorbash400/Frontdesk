@@ -12,14 +12,16 @@ type ExplorerContentProps = {
   selectedNode?: FileSystemNode;
   viewMode: ViewMode;
   onOpen: ItemHandler;
+  onRename: ItemHandler;
+  onTrashToggle: ItemHandler;
   onContextMenu: (event: MouseEvent, node: FileSystemNode) => void;
 };
 
-export function ExplorerContent({ nodes, selectedNode, viewMode, onOpen, onContextMenu }: ExplorerContentProps) {
+export function ExplorerContent({ nodes, selectedNode, viewMode, onOpen, onRename, onTrashToggle, onContextMenu }: ExplorerContentProps) {
   const shared = { nodes, onOpen, onContextMenu };
   return (
     <section className={styles.content}>
-      {viewMode === "grid" ? <IconView {...shared} selectedId={selectedNode?.id} /> : null}
+      {viewMode === "grid" ? <IconView {...shared} onRename={onRename} onTrashToggle={onTrashToggle} selectedId={selectedNode?.id} /> : null}
       {viewMode === "list" ? <ListView {...shared} selectedId={selectedNode?.id} /> : null}
     </section>
   );

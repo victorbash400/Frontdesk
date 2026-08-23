@@ -24,21 +24,34 @@
 }
 
 .table tr {
-  height: 25px;
+  height: 32px;
 }
 
 .table tbody tr:nth-child(even) td {
   background: #f7f7f6;
 }
 
+.table tbody tr {
+  cursor: pointer;
+}
+
+.table tbody tr:hover td {
+  background: #ededeb;
+}
+
 .table tbody tr[aria-selected="true"] td {
   background: #dceafa;
+}
+
+.table tbody tr[aria-selected="true"]:hover td {
+  background: #d1e4f9;
 }
 
 .table td {
   padding: 0 9px;
   overflow: hidden;
   text-overflow: ellipsis;
+  vertical-align: middle;
   white-space: nowrap;
 }
 
@@ -50,8 +63,14 @@
   border-radius: 0 7px 7px 0;
 }
 
-.table td:first-child {
+.nameCell {
   display: flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
+}
+
+.nameCell span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

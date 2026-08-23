@@ -138,7 +138,7 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
             {navigation.destination.type === "location" && navigation.destination.location === "skills" ? <SkillsLibrary accountId={account.id} /> : null}
             {taskView ? <TasksWorkspace accountId={account.id} clients={clients} /> : null}
             {openProfile && client ? <ClientProfileEditor clientName={client.name} key={`${openProfile.id}-${openProfile.updatedAt}`} onBack={() => setOpenProfileId(undefined)} onSave={(content) => fileSystem.updateNode(openProfile.id, { content })} profile={openProfile} /> : null}
-            {!utilityView ? <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} selectedNode={selectedNode} viewMode={viewMode} /> : null}
+            {!utilityView ? <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} onRename={(node) => setDialog({ mode: "rename", node })} onTrashToggle={(node) => { fileSystem.setTrashed(node.id, !node.trashedAt); setSelectedId(undefined); }} selectedNode={selectedNode} viewMode={viewMode} /> : null}
           </section>
           {inspectorOpen && !utilityView ? <Inspector node={selectedNode} onToggleTag={(tag) => selectedNode && fileSystem.toggleTag(selectedNode.id, tag)} /> : null}
           {client ? <ClientChatPanel clientId={client.id} key={client.id} open={chatOpen} /> : null}

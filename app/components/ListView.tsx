@@ -13,7 +13,12 @@ export function ListView({ nodes, selectedId, onOpen, onContextMenu }: { nodes: 
       <tbody>
         {nodes.map((node) => (
           <tr aria-selected={selectedId === node.id} key={node.id} onClick={() => onOpen(node)} onContextMenu={(event) => onContextMenu(event, node)}>
-            <td><FileIcon kind={node.kind} size="small" /><span>{node.name}</span></td>
+            <td>
+              <span className={styles.nameCell}>
+                <FileIcon kind={node.kind} size="small" />
+                <span>{node.name}</span>
+              </span>
+            </td>
             <td>{formatDate(node.updatedAt)}</td>
             <td>{kindLabel(node.kind)}</td>
           </tr>

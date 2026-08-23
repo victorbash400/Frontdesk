@@ -1,0 +1,116 @@
+.item {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgb(52 52 50 / 7%);
+  border-radius: 13px;
+  background: rgb(246 246 244 / 68%);
+  box-shadow: 0 5px 18px rgb(25 25 24 / 4%);
+  transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.item:hover {
+  border-color: rgb(52 52 50 / 12%);
+  background: rgb(243 243 241 / 82%);
+  box-shadow: 0 7px 22px rgb(25 25 24 / 7%);
+}
+
+.item[data-selected="true"] {
+  border-color: rgb(10 132 255 / 24%);
+  background: rgb(220 234 250 / 72%);
+}
+
+.preview {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: 112px;
+  padding: 16px 12px 10px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #292927;
+  cursor: pointer;
+}
+
+.preview:focus-visible,
+.footer button:focus-visible {
+  outline: 2px solid #0a84ff;
+  outline-offset: -2px;
+}
+
+.openLabel,
+.trash span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.tag {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.footer {
+  display: grid;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 8px 8px 11px;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 6px;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: #292927;
+  font: inherit;
+  font-size: 13px;
+  line-height: 28px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.name {
+  padding: 0;
+  border-radius: 5px;
+  cursor: text;
+}
+
+button.name:hover {
+  color: #087bea;
+}
+
+.trash {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #777773;
+  cursor: pointer;
+}
+
+.trash:hover {
+  background: rgb(196 55 49 / 10%);
+  color: #c43731;
+}
+
+.trash svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.7;
+}
