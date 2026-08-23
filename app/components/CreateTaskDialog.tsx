@@ -7,15 +7,14 @@ import styles from "./CreateTaskDialog.module.css";
 
 type CreateTaskDialogProps = {
   clients: FileSystemNode[];
-  clientId?: string;
   open: boolean;
   onCancel: () => void;
   onSubmit: (clientId: string, text: string) => void;
 };
 
-export function CreateTaskDialog({ clients, clientId, open, onCancel, onSubmit }: CreateTaskDialogProps) {
+export function CreateTaskDialog({ clients, open, onCancel, onSubmit }: CreateTaskDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [selectedClientId, setSelectedClientId] = useState(clientId ?? clients[0]?.id ?? "");
+  const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id ?? "");
   const [text, setText] = useState("");
   const [error, setError] = useState<string>();
 
@@ -23,12 +22,12 @@ export function CreateTaskDialog({ clients, clientId, open, onCancel, onSubmit }
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) {
-      setSelectedClientId(clientId ?? clients[0]?.id ?? "");
+      setSelectedClientId(clients[0]?.id ?? "");
       setText("");
       setError(undefined);
       dialog.showModal();
     } else if (!open && dialog.open) dialog.close();
-  }, [clientId, clients, open]);
+  }, [clients, open]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -45,7 +44,7 @@ export function CreateTaskDialog({ clients, clientId, open, onCancel, onSubmit }
     <dialog className={styles.dialog} onCancel={onCancel} ref={dialogRef}>
       <form onSubmit={submit}>
         <h2>New Task</h2>
-        {!clientId ? <label>Client<select aria-label="Task client" onChange={(event) => setSelectedClientId(event.target.value)} value={selectedClientId}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label> : null}
+        <label>Client<select aria-label="Task client" onChange={(event) => setSelectedClientId(event.target.value)} value={selectedClientId}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
         <label>Task<textarea aria-label="Task instructions" autoFocus onChange={(event) => setText(event.target.value)} placeholder="What should Operator do?" rows={6} value={text} /></label>
         {error ? <p role="alert">{error}</p> : null}
         <footer><button onClick={onCancel} type="button">Cancel</button><button disabled={!selectedClientId || !text.trim()} type="submit">Create Task</button></footer>

@@ -13,7 +13,6 @@ export type NodeKind = "client" | "folder" | "profile" | "task" | "audio" | "ema
 export type ViewMode = "icons" | "list" | "columns" | "gallery";
 export type SortMode = "name-asc" | "name-desc" | "date-desc" | "date-asc";
 export type SmartLocation = "clients" | "needs-you" | "tasks" | "calls" | "emails" | "documents" | "trash" | "plugins" | "skills";
-export type ClientLocation = "tasks" | "calls" | "emails" | "documents";
 
 export type FileSystemNode = {
   id: string;
@@ -32,8 +31,7 @@ export type FileSystemNode = {
 
 export type Destination =
   | { type: "location"; location: SmartLocation }
-  | { type: "folder"; id: string }
-  | { type: "client-location"; clientId: string; location: ClientLocation };
+  | { type: "folder"; id: string };
 
 export type BreadcrumbItem = {
   label: string;
