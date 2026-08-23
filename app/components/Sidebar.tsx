@@ -1,4 +1,4 @@
-import { BookOpenCheck, CircleAlert, Command, FileText, Folder, FolderPlus, ListTodo, Mail, Phone, Puzzle, Trash2, type LucideIcon } from "lucide-react";
+import { BookOpenCheck, Command, FileText, Folder, FolderPlus, ListTodo, Mail, Phone, Puzzle, Trash2, type LucideIcon } from "lucide-react";
 
 import { locationLabels } from "../lib/fileSystemSelectors";
 import type { Destination, SmartLocation } from "../types/filesystem";
@@ -10,7 +10,6 @@ const clientItems: Array<{ location: SmartLocation; icon: LucideIcon }> = [
 ];
 
 const workspaceItems: Array<{ location: SmartLocation; icon: LucideIcon }> = [
-  { location: "needs-you", icon: CircleAlert },
   { location: "tasks", icon: ListTodo },
   { location: "calls", icon: Phone },
   { location: "emails", icon: Mail },
