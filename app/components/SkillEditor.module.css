@@ -1,0 +1,12 @@
+.editor { display: grid; min-width: 0; min-height: 0; padding: 12px 18px 18px; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.editor input, .editor textarea { width: 100%; border: 0; outline: 0; background: transparent; color: #30302e; font-family: inherit; }
+.name { font-size: 18px; font-weight: 590; letter-spacing: -.02em; }
+.description { margin-top: 8px; color: #858581 !important; font-size: 11px; }
+.editor textarea { min-height: 0; margin-top: 24px; resize: none; font-size: 12px; line-height: 1.65; }
+.editor textarea::placeholder { color: #aaa9a4; }
+.editor footer { display: flex; min-height: 34px; margin-top: 12px; align-items: center; justify-content: flex-end; }
+.editor footer small { color: #92928d; font-size: 10px; }
+.editor footer small[role="alert"] { margin-right: auto; color: #a5322d; }
+.editor button { display: flex; height: 30px; padding: 0 12px; align-items: center; gap: 6px; border: 0; border-radius: 9px; background: #30302e; color: #fff; font-size: 11px; cursor: pointer; }
+.editor button:disabled { opacity: .35; cursor: default; }
+.editor button svg { width: 13px; height: 13px; }

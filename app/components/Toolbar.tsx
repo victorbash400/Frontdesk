@@ -23,6 +23,7 @@ type ToolbarProps = {
   query: string;
   sort: SortMode;
   viewMode: ViewMode;
+  utilityView?: boolean;
   onBack: () => void;
   onBreadcrumbNavigate: (destination: Destination) => void;
   onForward: () => void;
@@ -36,7 +37,7 @@ type ToolbarProps = {
   onViewModeChange: (mode: ViewMode) => void;
 };
 
-export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, hasSelection, chatAvailable, chatOpen, query, sort, viewMode, onBack, onBreadcrumbNavigate, onForward, onCreateClient, onCreateFolder, onChatToggle, onInspectorToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
+export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, hasSelection, chatAvailable, chatOpen, query, sort, viewMode, utilityView = false, onBack, onBreadcrumbNavigate, onForward, onCreateClient, onCreateFolder, onChatToggle, onInspectorToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
   const canCreateFolder = destination.type === "folder";
 
   function closeMenu(event: MouseEvent<HTMLButtonElement>) {
@@ -50,7 +51,7 @@ export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, has
         <button aria-label="Forward" disabled={!canGoForward} onClick={onForward} type="button"><ChevronRight /></button>
       </nav>
       <Breadcrumbs className={styles.path} items={breadcrumbs} onNavigate={onBreadcrumbNavigate} />
-      <nav className={styles.tools} aria-label="View and filesystem actions">
+      {!utilityView ? <nav className={styles.tools} aria-label="View and filesystem actions">
         <span className={styles.viewModes}>
           {viewModes.map(({ mode, label, icon: Icon }) => (
             <button aria-label={label} aria-pressed={viewMode === mode} key={mode} onClick={() => onViewModeChange(mode)} title={label} type="button"><Icon /></button>
@@ -82,7 +83,7 @@ export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, has
           <Search aria-hidden="true" />
           <input aria-label="Search Operator" onChange={(event) => onQueryChange(event.target.value)} placeholder="Search" type="search" value={query} />
         </label>
-      </nav>
+      </nav> : null}
     </header>
   );
 }

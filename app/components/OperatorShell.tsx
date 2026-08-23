@@ -11,7 +11,9 @@ import { ClientChatPanel } from "./ClientChatPanel";
 import { ExplorerContent } from "./ExplorerContent";
 import { Inspector } from "./Inspector";
 import { ItemContextMenu, type ContextMenuState } from "./ItemContextMenu";
+import { PluginStore } from "./PluginStore";
 import { Sidebar } from "./Sidebar";
+import { SkillsLibrary } from "./SkillsLibrary";
 import { Toolbar } from "./Toolbar";
 import styles from "./OperatorShell.module.css";
 
@@ -46,6 +48,7 @@ export function OperatorShell() {
     return folderPath(fileSystem.data.nodes, destination.id).find((node) => node.kind === "client");
   }, [fileSystem.data.nodes, navigation.destination]);
   const canCreate = navigation.destination.type === "folder" || navigation.destination.type === "location" && navigation.destination.location === "clients";
+  const utilityView = navigation.destination.type === "location" && (navigation.destination.location === "plugins" || navigation.destination.location === "skills");
 
   function navigate(destination: Parameters<typeof navigation.navigate>[0]) {
     navigation.navigate(destination);
@@ -115,12 +118,14 @@ export function OperatorShell() {
     <main className={styles.shell} onKeyDown={handleKeyboard} style={tagVariables} tabIndex={-1}>
       <Sidebar client={client ? { id: client.id, name: client.name } : undefined} destination={navigation.destination} onCreateClient={() => setDialog({ mode: "create-client" })} onNavigate={navigate} />
       <section className={styles.explorer}>
-        <Toolbar breadcrumbs={breadcrumbs} canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} chatAvailable={Boolean(client)} chatOpen={chatOpen} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={navigation.back} onBreadcrumbNavigate={navigate} onChatToggle={() => setChatOpen((current) => !current)} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={navigation.forward} onInspectorToggle={() => setInspectorOpen((current) => !current)} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} query={query} sort={sort} viewMode={viewMode} />
+        <Toolbar breadcrumbs={breadcrumbs} canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} chatAvailable={Boolean(client)} chatOpen={chatOpen} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={navigation.back} onBreadcrumbNavigate={navigate} onChatToggle={() => setChatOpen((current) => !current)} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={navigation.forward} onInspectorToggle={() => setInspectorOpen((current) => !current)} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} query={query} sort={sort} utilityView={utilityView} viewMode={viewMode} />
         <section className={styles.workspace}>
           <section className={styles.browser} onClick={() => setContextMenu(undefined)}>
-            <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} selectedNode={selectedNode} viewMode={viewMode} />
+            {navigation.destination.type === "location" && navigation.destination.location === "plugins" ? <PluginStore /> : null}
+            {navigation.destination.type === "location" && navigation.destination.location === "skills" ? <SkillsLibrary /> : null}
+            {!utilityView ? <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} selectedNode={selectedNode} viewMode={viewMode} /> : null}
           </section>
-          {inspectorOpen ? <Inspector node={selectedNode} onToggleTag={(tag) => selectedNode && fileSystem.toggleTag(selectedNode.id, tag)} /> : null}
+          {inspectorOpen && !utilityView ? <Inspector node={selectedNode} onToggleTag={(tag) => selectedNode && fileSystem.toggleTag(selectedNode.id, tag)} /> : null}
           {client ? <ClientChatPanel clientId={client.id} key={client.id} open={chatOpen} /> : null}
         </section>
       </section>
