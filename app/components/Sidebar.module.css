@@ -17,22 +17,31 @@
   cursor: pointer;
 }
 
+.sidebar > header {
+  display: flex;
+  height: 54px;
+  padding: 0 20px;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar > header svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.7;
+}
+
+.sidebar > header strong {
+  font-size: 14px;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+
 .sidebar nav {
-  height: 100%;
-  padding: 17px 12px 20px;
+  height: calc(100% - 54px);
+  padding: 0 12px 20px;
   overflow-y: auto;
   scrollbar-width: thin;
-}
-
-.sidebar nav section + section {
-  margin-top: 19px;
-}
-
-.sidebar h2 {
-  margin: 0 9px 6px;
-  color: #83837f;
-  font-size: 11px;
-  font-weight: 650;
 }
 
 .sidebar nav button {

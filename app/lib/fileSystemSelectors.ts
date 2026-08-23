@@ -64,8 +64,6 @@ function nodesForLocation(nodes: FileSystemNode[], location: SmartLocation) {
   if (location === "trash") return nodes.filter((node) => Boolean(node.trashedAt));
 
   const active = nodes.filter((node) => !node.trashedAt);
-  if (location === "recents") return active;
-  if (location === "shared") return active.filter((node) => node.shared);
   if (location === "needs-you") return active.filter((node) => node.needsAttention);
   if (location === "calls") return active.filter((node) => node.kind === "audio");
   if (location === "email") return active.filter((node) => node.kind === "email");
@@ -75,8 +73,6 @@ function nodesForLocation(nodes: FileSystemNode[], location: SmartLocation) {
 
 export const locationLabels: Record<SmartLocation, string> = {
   clients: "Clients",
-  recents: "Recents",
-  shared: "Shared",
   "needs-you": "Needs You",
   calls: "Calls",
   email: "Email",
