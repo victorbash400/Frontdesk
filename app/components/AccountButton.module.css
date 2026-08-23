@@ -1,0 +1,15 @@
+.account { position: relative; margin-left: auto; }
+.account summary { display: grid; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #676762; cursor: pointer; list-style: none; place-items: center; }
+.account summary::-webkit-details-marker { display: none; }
+.account summary:hover { background: #ececea; }
+.account[open] summary { color: #222; background: #ececea; }
+.account summary svg { width: 15px; height: 15px; }
+.account > section { position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: 184px; padding: 7px; border: 1px solid #e5e5e1; border-radius: 10px; background: #fff; box-shadow: 0 12px 32px rgb(24 24 22 / 10%); }
+.account p { display: grid; margin: 0; padding: 7px 8px 9px; gap: 2px; }
+.account p span, .account p small { overflow: hidden; color: #92928d; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.account p strong { overflow: hidden; color: #30302d; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.account p[role="alert"] { color: #9d2828; font-size: 9px; }
+.account section > button { display: flex; width: 100%; height: 31px; padding: 0 8px; align-items: center; gap: 7px; border: 0; border-radius: 7px; background: transparent; color: #666662; font-size: 10px; cursor: pointer; }
+.account section > button:hover { background: #f4f4f1; color: #1d1d1b; }
+.account section > button:disabled { opacity: .5; cursor: default; }
+.account section > button svg { width: 13px; height: 13px; }

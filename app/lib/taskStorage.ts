@@ -1,17 +1,18 @@
 import type { OperatorTask } from "../types/task";
+import { accountStorageKey } from "./accountStorage";
 
-const storageKey = "operator-tasks-v1";
+const storageNamespace = "operator-tasks-v1";
 
-export function loadTasks(): OperatorTask[] {
-  const stored = window.localStorage.getItem(storageKey);
+export function loadTasks(accountId: string): OperatorTask[] {
+  const stored = window.localStorage.getItem(accountStorageKey(storageNamespace, accountId));
   if (!stored) return [];
   const value: unknown = JSON.parse(stored);
   if (!Array.isArray(value) || !value.every(isTask)) throw new Error("The saved tasks are invalid.");
   return value;
 }
 
-export function saveTasks(tasks: OperatorTask[]) {
-  window.localStorage.setItem(storageKey, JSON.stringify(tasks));
+export function saveTasks(accountId: string, tasks: OperatorTask[]) {
+  window.localStorage.setItem(accountStorageKey(storageNamespace, accountId), JSON.stringify(tasks));
 }
 
 function isTask(value: unknown): value is OperatorTask {

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { loadSkills, saveSkills } from "../lib/skillStorage";
 import type { OperatorSkill } from "../types/skill";
 
-export function useSkillsLibrary() {
+export function useSkillsLibrary(accountId: string) {
   const [skills, setSkills] = useState<OperatorSkill[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string>();
@@ -13,7 +13,7 @@ export function useSkillsLibrary() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       try {
-        setSkills(loadSkills());
+        setSkills(loadSkills(accountId));
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "Could not load skills.");
       } finally {
@@ -21,7 +21,7 @@ export function useSkillsLibrary() {
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, []);
+  }, [accountId]);
 
   const createSkill = useCallback((name: string, description: string) => {
     const cleanName = name.trim();
@@ -36,21 +36,21 @@ export function useSkillsLibrary() {
       updatedAt: new Date().toISOString(),
     };
     const next = [skill, ...skills];
-    saveSkills(next);
+    saveSkills(accountId, next);
     setSkills(next);
     setError(undefined);
     return id;
-  }, [skills]);
+  }, [accountId, skills]);
 
   const updateSkill = useCallback((id: string, update: Pick<OperatorSkill, "name" | "description" | "instructions">) => {
     const name = update.name.trim();
     if (!name) throw new Error("A skill needs a name.");
     if (skills.some((skill) => skill.id !== id && normalizeName(skill.name) === normalizeName(name))) throw new Error(`“${name}” already exists.`);
     const next = skills.map((skill) => skill.id === id ? { ...skill, ...update, name, updatedAt: new Date().toISOString() } : skill);
-    saveSkills(next);
+    saveSkills(accountId, next);
     setSkills(next);
     setError(undefined);
-  }, [skills]);
+  }, [accountId, skills]);
 
   return { createSkill, error, loaded, skills, updateSkill };
 }

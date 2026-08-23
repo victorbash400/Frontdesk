@@ -6,6 +6,7 @@ import { useFileSystem } from "../hooks/useFileSystem";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 import { breadcrumbsForDestination, folderPath, isContainer, nodesForDestination, sortNodes } from "../lib/fileSystemSelectors";
 import { tagColors, type FileSystemNode, type SortMode, type ViewMode } from "../types/filesystem";
+import type { OperatorAccount } from "../types/account";
 import { CreateItemDialog } from "./CreateItemDialog";
 import { ClientChatPanel } from "./ClientChatPanel";
 import { ClientProfileEditor } from "./ClientProfileEditor";
@@ -21,8 +22,8 @@ import styles from "./OperatorShell.module.css";
 
 type DialogState = { mode: "create-client" | "create-folder" | "rename"; node?: FileSystemNode };
 
-export function OperatorShell() {
-  const fileSystem = useFileSystem();
+export function OperatorShell({ account }: { account: OperatorAccount }) {
+  const fileSystem = useFileSystem(account.id);
   const navigation = useNavigationHistory();
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -128,14 +129,14 @@ export function OperatorShell() {
 
   return (
     <main className={styles.shell} onKeyDown={handleKeyboard} style={tagVariables} tabIndex={-1}>
-      <Sidebar destination={navigation.destination} onCreateClient={() => setDialog({ mode: "create-client" })} onNavigate={navigate} />
+      <Sidebar account={account} destination={navigation.destination} onCreateClient={() => setDialog({ mode: "create-client" })} onNavigate={navigate} />
       <section className={styles.explorer}>
         <Toolbar breadcrumbs={breadcrumbs} canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} chatAvailable={Boolean(client)} chatOpen={chatOpen} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={() => { navigation.back(); setOpenProfileId(undefined); }} onBreadcrumbNavigate={navigate} onChatToggle={() => setChatOpen((current) => !current)} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={() => { navigation.forward(); setOpenProfileId(undefined); }} onInspectorToggle={() => setInspectorOpen((current) => !current)} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} query={query} sort={sort} utilityView={utilityView} viewMode={viewMode} />
         <section className={styles.workspace}>
           <section className={styles.browser} onClick={() => setContextMenu(undefined)}>
-            {navigation.destination.type === "location" && navigation.destination.location === "plugins" ? <PluginStore /> : null}
-            {navigation.destination.type === "location" && navigation.destination.location === "skills" ? <SkillsLibrary /> : null}
-            {taskView ? <TasksWorkspace clients={clients} /> : null}
+            {navigation.destination.type === "location" && navigation.destination.location === "plugins" ? <PluginStore accountId={account.id} /> : null}
+            {navigation.destination.type === "location" && navigation.destination.location === "skills" ? <SkillsLibrary accountId={account.id} /> : null}
+            {taskView ? <TasksWorkspace accountId={account.id} clients={clients} /> : null}
             {openProfile && client ? <ClientProfileEditor clientName={client.name} key={`${openProfile.id}-${openProfile.updatedAt}`} onBack={() => setOpenProfileId(undefined)} onSave={(content) => fileSystem.updateNode(openProfile.id, { content })} profile={openProfile} /> : null}
             {!utilityView ? <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} selectedNode={selectedNode} viewMode={viewMode} /> : null}
           </section>

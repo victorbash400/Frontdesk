@@ -14,6 +14,7 @@ type StatusFilter = TaskStatus | "all";
 type SortMode = "newest" | "oldest" | "client";
 
 type TasksWorkspaceProps = {
+  accountId: string;
   clients: FileSystemNode[];
 };
 
@@ -24,8 +25,8 @@ const filters: Array<{ id: StatusFilter; label: string }> = [
   { id: "completed", label: "Completed" },
 ];
 
-export function TasksWorkspace({ clients }: TasksWorkspaceProps) {
-  const { createTask, error, loaded, setTaskStatus, tasks, updateTaskText } = useTasks();
+export function TasksWorkspace({ accountId, clients }: TasksWorkspaceProps) {
+  const { createTask, error, loaded, setTaskStatus, tasks, updateTaskText } = useTasks(accountId);
   const [status, setStatus] = useState<StatusFilter>("all");
   const [selectedClientId, setSelectedClientId] = useState("all");
   const [selectedTaskId, setSelectedTaskId] = useState<string>();

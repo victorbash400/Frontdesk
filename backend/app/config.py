@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     strands_region: str = "us-west-2"
     strands_model_id: str = "global.anthropic.claude-sonnet-4-6"
     cors_origins: str = "http://localhost:3000"
+    internal_secret: str = "operator-local-development-secret"
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / "backend" / ".env",

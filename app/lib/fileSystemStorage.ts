@@ -1,10 +1,11 @@
 import type { FileSystemData } from "../types/filesystem";
+import { accountStorageKey } from "./accountStorage";
 
-const storageKey = "operator-filesystem-v1";
+const storageNamespace = "operator-filesystem-v1";
 const emptyFileSystem: FileSystemData = { version: 1, nodes: [] };
 
-export function loadFileSystem(): FileSystemData {
-  const stored = window.localStorage.getItem(storageKey);
+export function loadFileSystem(accountId: string): FileSystemData {
+  const stored = window.localStorage.getItem(accountStorageKey(storageNamespace, accountId));
   if (!stored) return emptyFileSystem;
 
   const data: unknown = JSON.parse(stored);
@@ -13,7 +14,7 @@ export function loadFileSystem(): FileSystemData {
   }
 
   const migrated = ensureClientProfiles(data);
-  if (migrated !== data) saveFileSystem(migrated);
+  if (migrated !== data) saveFileSystem(accountId, migrated);
   return migrated;
 }
 
@@ -53,8 +54,8 @@ function createClientProfile(client: FileSystemData["nodes"][number]) {
   };
 }
 
-export function saveFileSystem(data: FileSystemData) {
-  window.localStorage.setItem(storageKey, JSON.stringify(data));
+export function saveFileSystem(accountId: string, data: FileSystemData) {
+  window.localStorage.setItem(accountStorageKey(storageNamespace, accountId), JSON.stringify(data));
 }
 
 function isFileSystemData(value: unknown): value is FileSystemData {

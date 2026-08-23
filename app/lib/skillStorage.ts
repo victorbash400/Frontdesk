@@ -1,6 +1,7 @@
+import { accountStorageKey } from "./accountStorage";
 import type { OperatorSkill } from "../types/skill";
 
-const storageKey = "operator-skills-v1";
+const storageNamespace = "operator-skills-v1";
 
 const starterSkills: OperatorSkill[] = [
   {
@@ -26,16 +27,16 @@ const starterSkills: OperatorSkill[] = [
   },
 ];
 
-export function loadSkills() {
-  const stored = window.localStorage.getItem(storageKey);
+export function loadSkills(accountId: string) {
+  const stored = window.localStorage.getItem(accountStorageKey(storageNamespace, accountId));
   if (!stored) return starterSkills;
   const value: unknown = JSON.parse(stored);
   if (!Array.isArray(value) || !value.every(isSkill)) throw new Error("The saved skills library is invalid.");
   return value;
 }
 
-export function saveSkills(skills: OperatorSkill[]) {
-  window.localStorage.setItem(storageKey, JSON.stringify(skills));
+export function saveSkills(accountId: string, skills: OperatorSkill[]) {
+  window.localStorage.setItem(accountStorageKey(storageNamespace, accountId), JSON.stringify(skills));
 }
 
 function isSkill(value: unknown): value is OperatorSkill {

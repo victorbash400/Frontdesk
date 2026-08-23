@@ -15,8 +15,8 @@ const categories: Array<{ id: PluginCategory; label: string }> = [
   { id: "mcps", label: "MCPs" },
 ];
 
-export function PluginStore() {
-  const { enabledIds, error, loaded, toggle } = usePluginDirectory();
+export function PluginStore({ accountId }: { accountId: string }) {
+  const { enabledIds, error, loaded, toggle } = usePluginDirectory(accountId);
   const [category, setCategory] = useState<PluginCategory>("plugins");
   const [pendingPlugin, setPendingPlugin] = useState<PluginDefinition>();
   const [query, setQuery] = useState("");

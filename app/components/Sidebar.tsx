@@ -2,6 +2,7 @@ import { BookOpenCheck, CircleAlert, Command, FileText, Folder, FolderPlus, List
 
 import { locationLabels } from "../lib/fileSystemSelectors";
 import type { Destination, SmartLocation } from "../types/filesystem";
+import { AccountButton } from "./AccountButton";
 import styles from "./Sidebar.module.css";
 
 const clientItems: Array<{ location: SmartLocation; icon: LucideIcon }> = [
@@ -20,17 +21,19 @@ const workspaceItems: Array<{ location: SmartLocation; icon: LucideIcon }> = [
 ];
 
 type SidebarProps = {
+  account: { email: string; name: string };
   destination: Destination;
   onCreateClient: () => void;
   onNavigate: (destination: Destination) => void;
 };
 
-export function Sidebar({ destination, onCreateClient, onNavigate }: SidebarProps) {
+export function Sidebar({ account, destination, onCreateClient, onNavigate }: SidebarProps) {
   return (
     <aside className={styles.sidebar}>
       <header>
         <Command aria-hidden="true" />
         <strong>Operator</strong>
+        <AccountButton email={account.email} name={account.name} />
       </header>
       <nav aria-label="Filesystem locations">
         <button onClick={onCreateClient} type="button">

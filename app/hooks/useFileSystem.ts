@@ -8,7 +8,7 @@ import type { FileSystemData, FileSystemNode, NodeKind, TagName } from "../types
 
 const initialData: FileSystemData = { version: 1, nodes: [] };
 
-export function useFileSystem() {
+export function useFileSystem(accountId: string) {
   const [data, setData] = useState(initialData);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string>();
@@ -16,7 +16,7 @@ export function useFileSystem() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       try {
-        setData(loadFileSystem());
+        setData(loadFileSystem(accountId));
       } catch (reason) {
         setError(messageFrom(reason, "Could not load the filesystem."));
       } finally {
@@ -25,13 +25,13 @@ export function useFileSystem() {
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, []);
+  }, [accountId]);
 
   const commit = useCallback((update: (current: FileSystemData) => FileSystemData) => {
     setData((current) => {
       const next = update(current);
       try {
-        saveFileSystem(next);
+        saveFileSystem(accountId, next);
         setError(undefined);
         return next;
       } catch (reason) {
@@ -39,7 +39,7 @@ export function useFileSystem() {
         return current;
       }
     });
-  }, []);
+  }, [accountId]);
 
   const createNode = useCallback((name: string, kind: NodeKind, parentId: string | null) => {
     if (hasSiblingName(data.nodes, name, parentId)) throw new Error(`“${name}” already exists in this folder.`);

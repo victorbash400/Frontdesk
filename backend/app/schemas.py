@@ -7,6 +7,23 @@ from pydantic import BaseModel, ConfigDict, Field
 NodeKind = Literal["client", "folder", "audio", "email", "document", "request", "note"]
 
 
+class AccountCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=8, max_length=128)
+    name: str = Field(min_length=1, max_length=80)
+
+
+class AccountCredentials(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AccountRead(BaseModel):
+    id: str
+    email: str
+    name: str
+
+
 class NodeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     kind: NodeKind

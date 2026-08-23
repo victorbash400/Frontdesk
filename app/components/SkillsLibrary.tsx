@@ -11,8 +11,8 @@ import styles from "./SkillsLibrary.module.css";
 
 type SortMode = "name" | "newest" | "oldest";
 
-export function SkillsLibrary() {
-  const { createSkill, error, loaded, skills, updateSkill } = useSkillsLibrary();
+export function SkillsLibrary({ accountId }: { accountId: string }) {
+  const { createSkill, error, loaded, skills, updateSkill } = useSkillsLibrary(accountId);
   const [openSkillId, setOpenSkillId] = useState<string>();
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
