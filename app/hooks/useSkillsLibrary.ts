@@ -23,12 +23,15 @@ export function useSkillsLibrary() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  const createSkill = useCallback(() => {
+  const createSkill = useCallback((name: string, description: string) => {
+    const cleanName = name.trim();
+    if (!cleanName) throw new Error("A skill needs a name.");
+    if (skills.some((skill) => normalizeName(skill.name) === normalizeName(cleanName))) throw new Error(`“${cleanName}” already exists.`);
     const id = crypto.randomUUID();
     const skill: OperatorSkill = {
       id,
-      name: nextName(skills),
-      description: "Describe when Operator should use this skill",
+      name: cleanName,
+      description: description.trim(),
       instructions: "",
       updatedAt: new Date().toISOString(),
     };
@@ -50,12 +53,6 @@ export function useSkillsLibrary() {
   }, [skills]);
 
   return { createSkill, error, loaded, skills, updateSkill };
-}
-
-function nextName(skills: OperatorSkill[]) {
-  let index = 1;
-  while (skills.some((skill) => normalizeName(skill.name) === normalizeName(index === 1 ? "Untitled Skill" : `Untitled Skill ${index}`))) index += 1;
-  return index === 1 ? "Untitled Skill" : `Untitled Skill ${index}`;
 }
 
 function normalizeName(name: string) {

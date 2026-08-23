@@ -4,20 +4,26 @@ import type { OperatorSkill } from "../types/skill";
 import styles from "./SkillList.module.css";
 
 type SkillListProps = {
-  selectedId?: string;
   skills: OperatorSkill[];
-  onSelect: (id: string) => void;
+  onOpen: (id: string) => void;
 };
 
-export function SkillList({ selectedId, skills, onSelect }: SkillListProps) {
+export function SkillList({ skills, onOpen }: SkillListProps) {
   return (
-    <nav aria-label="Skills" className={styles.list}>
+    <section aria-label="Skill files" className={styles.list}>
+      <header><span>Name</span><span>When to use</span><span>Modified</span></header>
       {skills.map((skill) => (
-        <button aria-current={skill.id === selectedId ? "page" : undefined} key={skill.id} onClick={() => onSelect(skill.id)} type="button">
-          <FileText aria-hidden="true" />
-          <span><strong>{skill.name}</strong><small>{skill.description}</small></span>
+        <button key={skill.id} onClick={() => onOpen(skill.id)} type="button">
+          <span className={styles.name}><FileText aria-hidden="true" /><strong>{skill.name}</strong></span>
+          <span className={styles.description}>{skill.description || "No description"}</span>
+          <time dateTime={skill.updatedAt}>{formatDate(skill.updatedAt)}</time>
         </button>
       ))}
-    </nav>
+      {!skills.length ? <p>No skills match this search.</p> : null}
+    </section>
   );
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
 }

@@ -14,6 +14,7 @@ import { ItemContextMenu, type ContextMenuState } from "./ItemContextMenu";
 import { PluginStore } from "./PluginStore";
 import { Sidebar } from "./Sidebar";
 import { SkillsLibrary } from "./SkillsLibrary";
+import { TasksWorkspace } from "./TasksWorkspace";
 import { Toolbar } from "./Toolbar";
 import styles from "./OperatorShell.module.css";
 
@@ -47,8 +48,10 @@ export function OperatorShell() {
     if (destination.type !== "folder") return undefined;
     return folderPath(fileSystem.data.nodes, destination.id).find((node) => node.kind === "client");
   }, [fileSystem.data.nodes, navigation.destination]);
+  const clients = useMemo(() => fileSystem.data.nodes.filter((node) => node.kind === "client" && !node.trashedAt), [fileSystem.data.nodes]);
   const canCreate = navigation.destination.type === "folder" || navigation.destination.type === "location" && navigation.destination.location === "clients";
-  const utilityView = navigation.destination.type === "location" && (navigation.destination.location === "plugins" || navigation.destination.location === "skills");
+  const taskView = navigation.destination.type === "location" && navigation.destination.location === "tasks" || navigation.destination.type === "client-location" && navigation.destination.location === "tasks";
+  const utilityView = taskView || navigation.destination.type === "location" && (navigation.destination.location === "plugins" || navigation.destination.location === "skills");
 
   function navigate(destination: Parameters<typeof navigation.navigate>[0]) {
     navigation.navigate(destination);
@@ -123,6 +126,7 @@ export function OperatorShell() {
           <section className={styles.browser} onClick={() => setContextMenu(undefined)}>
             {navigation.destination.type === "location" && navigation.destination.location === "plugins" ? <PluginStore /> : null}
             {navigation.destination.type === "location" && navigation.destination.location === "skills" ? <SkillsLibrary /> : null}
+            {taskView ? <TasksWorkspace clientId={navigation.destination.type === "client-location" ? navigation.destination.clientId : undefined} clients={clients} /> : null}
             {!utilityView ? <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} selectedNode={selectedNode} viewMode={viewMode} /> : null}
           </section>
           {inspectorOpen && !utilityView ? <Inspector node={selectedNode} onToggleTag={(tag) => selectedNode && fileSystem.toggleTag(selectedNode.id, tag)} /> : null}

@@ -1,0 +1,11 @@
+.row { display: grid; width: 100%; min-height: 62px; padding: 9px 10px; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 9px; border: 0; border-radius: 10px; background: transparent; color: #30302e; text-align: left; cursor: pointer; }
+.row:hover { background: rgb(0 0 0 / 4%); }
+.row[aria-current="page"] { background: #e8e8e6; }
+.marker { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid #bdbdb8; border-radius: 50%; color: #858581; }
+.marker svg { width: 10px; height: 10px; stroke-width: 2; }
+.row[data-status="active"] .marker { border-color: #0a84ff; background: #0a84ff; color: #fff; }
+.row[data-status="completed"] .marker { border-color: #343431; background: #343431; color: #fff; }
+.row > span:last-child { min-width: 0; }
+.row strong, .row small { display: block; }
+.row strong { display: -webkit-box; overflow: hidden; font-size: 12px; font-weight: 540; line-height: 1.38; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.row small { margin-top: 5px; color: #92928d; font-size: 10px; }

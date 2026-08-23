@@ -1,0 +1,24 @@
+.tasks { display: grid; width: min(980px, calc(100% - 64px)); height: 100%; margin: 0 auto; padding: 30px 0 38px; grid-template-rows: auto auto auto minmax(0, 1fr); color: #30302e; }
+.tasks > header { display: flex; align-items: flex-start; justify-content: space-between; }
+.tasks h1 { margin: 0; font-size: 22px; font-weight: 570; letter-spacing: -.025em; }
+.tasks header p { margin: 7px 0 0; color: #858581; font-size: 12px; }
+.tasks > header button { display: flex; height: 32px; padding: 0 11px; align-items: center; gap: 6px; border: 0; border-radius: 9px; background: #30302e; color: #fff; font-size: 11px; cursor: pointer; }
+.tasks > header button:disabled { opacity: .35; cursor: default; }
+.tasks > header svg { width: 14px; height: 14px; }
+.controls { display: flex; margin: 24px 0 17px; align-items: center; justify-content: space-between; gap: 16px; }
+.controls nav { display: flex; padding: 2px; border-radius: 10px; background: #eeeeec; }
+.controls nav button { height: 27px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #777772; font-size: 11px; cursor: pointer; }
+.controls nav button[aria-current="page"] { background: #fff; color: #30302e; box-shadow: 0 1px 4px rgb(0 0 0 / 9%); }
+.controls > span { display: flex; gap: 7px; }
+.controls label { position: relative; display: flex; height: 31px; align-items: center; border: 1px solid #e0e0dd; border-radius: 16px; color: #777772; background: #fff; }
+.controls label svg { position: absolute; left: 9px; width: 14px; height: 14px; pointer-events: none; }
+.controls select { height: 30px; padding: 0 10px 0 29px; border: 0; outline: 0; background: transparent; color: #4e4e4a; font-size: 11px; cursor: pointer; }
+.workspace { display: grid; min-height: 0; grid-template-columns: minmax(260px, .8fr) minmax(420px, 1.4fr); gap: 8px; padding: 4px; border-radius: 19px; background: #f4f4f2; overflow: hidden; }
+.empty { place-self: center; color: #aaa9a4; font-size: 11px; }
+.error { margin: 0 0 10px; color: #a5322d; font-size: 11px; }
+
+@media (max-width: 860px) {
+  .tasks { width: calc(100% - 32px); }
+  .workspace { grid-template-columns: 1fr; }
+  .controls { align-items: flex-start; flex-direction: column; }
+}
