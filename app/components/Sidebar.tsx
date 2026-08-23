@@ -1,14 +1,13 @@
-import { Clock3, FileText, Folder, FolderPlus, Mail, MessageSquareText, Phone, Share2, Trash2, UserRoundCheck } from "lucide-react";
+import { BookOpenCheck, CircleAlert, Clock3, FileText, Folder, FolderPlus, Mail, Phone, Puzzle, Trash2, UsersRound, type LucideIcon } from "lucide-react";
 
 import { locationLabels } from "../lib/fileSystemSelectors";
 import type { Destination, SmartLocation } from "../types/filesystem";
-import { CustomIcon } from "./CustomIcon";
 import styles from "./Sidebar.module.css";
 
-const sections: Array<{ label?: string; items: Array<{ location: SmartLocation; icon?: typeof Clock3; customIcon?: "plugin" | "skills" }> }> = [
-  { items: [{ location: "recents", icon: Clock3 }, { location: "shared", icon: Share2 }] },
-  { label: "Favorites", items: [{ location: "clients", icon: Folder }, { location: "needs-you", icon: UserRoundCheck }] },
-  { label: "Locations", items: [{ location: "calls", icon: Phone }, { location: "email", icon: Mail }, { location: "documents", icon: FileText }, { location: "requests", icon: MessageSquareText }, { location: "plugins", customIcon: "plugin" }, { location: "skills", customIcon: "skills" }, { location: "trash", icon: Trash2 }] },
+const sections: Array<{ label?: string; items: Array<{ location: SmartLocation; icon: LucideIcon }> }> = [
+  { items: [{ location: "recents", icon: Clock3 }, { location: "shared", icon: UsersRound }] },
+  { label: "Favorites", items: [{ location: "clients", icon: Folder }, { location: "needs-you", icon: CircleAlert }] },
+  { label: "Locations", items: [{ location: "calls", icon: Phone }, { location: "email", icon: Mail }, { location: "documents", icon: FileText }, { location: "plugins", icon: Puzzle }, { location: "skills", icon: BookOpenCheck }, { location: "trash", icon: Trash2 }] },
 ];
 
 type SidebarProps = {
@@ -30,11 +29,11 @@ export function Sidebar({ destination, onCreateClient, onNavigate }: SidebarProp
                 <span>New Client</span>
               </button>
             ) : null}
-            {section.items.map(({ location, icon: Icon, customIcon }) => {
+            {section.items.map(({ location, icon: Icon }) => {
               const active = destination.type === "location" && destination.location === location;
               return (
                 <button aria-current={active ? "page" : undefined} key={location} onClick={() => onNavigate(location)} title={locationLabels[location]} type="button">
-                  {Icon ? <Icon aria-hidden="true" /> : <CustomIcon name={customIcon!} />}
+                  <Icon aria-hidden="true" />
                   <span>{locationLabels[location]}</span>
                 </button>
               );
