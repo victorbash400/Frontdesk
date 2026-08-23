@@ -1,10 +1,10 @@
-.library { display: grid; width: min(940px, calc(100% - 64px)); min-height: 100%; margin: 0 auto; padding: 32px 0 40px; grid-template-rows: auto auto auto auto; color: #30302e; }
+.library { display: grid; width: min(940px, calc(100% - 64px)); min-height: 100%; margin: 0 auto; padding: 24px 0 40px; align-content: start; color: #30302e; }
 .library > header { display: flex; align-items: flex-start; justify-content: space-between; }
 .library h1 { margin: 0; font-size: 22px; font-weight: 570; letter-spacing: -.025em; }
 .library header p { margin: 7px 0 0; color: #858581; font-size: 12px; }
 .library header button { display: flex; height: 32px; padding: 0 11px; align-items: center; gap: 6px; border: 0; border-radius: 9px; background: #30302e; color: #fff; font-size: 11px; cursor: pointer; }
 .library header button svg { width: 14px; height: 14px; }
-.controls { display: flex; margin: 27px 0 17px; align-items: center; justify-content: space-between; gap: 12px; }
+.controls { display: flex; margin: 22px 0 12px; align-items: center; justify-content: space-between; gap: 12px; }
 .search, .sort { position: relative; display: flex; height: 32px; align-items: center; border: 1px solid #dededb; border-radius: 17px; color: #858581; }
 .search { width: 240px; padding: 0 10px; gap: 7px; }
 .search svg, .sort svg { width: 14px; height: 14px; }
