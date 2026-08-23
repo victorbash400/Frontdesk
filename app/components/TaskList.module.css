@@ -1,2 +1,3 @@
-.list { min-height: 0; padding: 5px; overflow-y: auto; scrollbar-width: thin; }
-.list > p { margin: 0; padding: 52px 12px; color: #aaa9a4; font-size: 11px; text-align: center; }
+.list { display: grid; min-height: 100%; align-content: start; }
+.list[data-empty="true"] { place-content: center; }
+.list > p { place-self: center; margin: 0; color: #aaa9a4; font-size: 11px; text-align: center; }

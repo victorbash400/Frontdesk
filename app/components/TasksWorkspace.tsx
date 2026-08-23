@@ -7,7 +7,6 @@ import { useTasks } from "../hooks/useTasks";
 import type { FileSystemNode } from "../types/filesystem";
 import type { TaskStatus } from "../types/task";
 import { CreateTaskDialog } from "./CreateTaskDialog";
-import { TaskDetail } from "./TaskDetail";
 import { TaskList } from "./TaskList";
 import styles from "./TasksWorkspace.module.css";
 
@@ -19,15 +18,15 @@ type TasksWorkspaceProps = {
 };
 
 const filters: Array<{ id: StatusFilter; label: string }> = [
+  { id: "all", label: "All" },
   { id: "active", label: "Active" },
   { id: "ready", label: "Ready" },
   { id: "completed", label: "Completed" },
-  { id: "all", label: "All" },
 ];
 
 export function TasksWorkspace({ clients }: TasksWorkspaceProps) {
   const { createTask, error, loaded, setTaskStatus, tasks, updateTaskText } = useTasks();
-  const [status, setStatus] = useState<StatusFilter>("active");
+  const [status, setStatus] = useState<StatusFilter>("all");
   const [selectedClientId, setSelectedClientId] = useState("all");
   const [selectedTaskId, setSelectedTaskId] = useState<string>();
   const [sort, setSort] = useState<SortMode>("newest");
@@ -41,8 +40,7 @@ export function TasksWorkspace({ clients }: TasksWorkspaceProps) {
     return right.createdAt.localeCompare(left.createdAt);
     });
   }, [clients, effectiveClientId, sort, status, tasks]);
-  const selectedTask = visible.find((task) => task.id === selectedTaskId) ?? visible[0];
-  const selectedClient = clients.find((client) => client.id === selectedTask?.clientId);
+  const panelTitle = status === "all" ? "All tasks" : `${filters.find((filter) => filter.id === status)?.label ?? "Tasks"} tasks`;
 
   if (!loaded) return null;
 
@@ -57,9 +55,11 @@ export function TasksWorkspace({ clients }: TasksWorkspaceProps) {
         </span>
       </section>
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
-      <section className={styles.workspace}>
-        <TaskList clients={clients} onSelect={setSelectedTaskId} selectedId={selectedTask?.id} tasks={visible} />
-        {selectedTask && selectedClient ? <TaskDetail clientName={selectedClient.name} key={`${selectedTask.id}-${selectedTask.updatedAt}`} onStatusChange={(next) => { setTaskStatus(selectedTask.id, next); setStatus(next); }} onTextSave={(text) => updateTaskText(selectedTask.id, text)} task={selectedTask} /> : <p className={styles.empty}>{clients.length ? "Create a task or choose another view." : "Create a client before adding tasks."}</p>}
+      <section className={styles.panel}>
+        <header><span>{panelTitle}</span><small>{visible.length}</small></header>
+        <section className={styles.sheet}>
+          <TaskList clients={clients} onSelect={setSelectedTaskId} onStatusChange={setTaskStatus} onTextSave={updateTaskText} selectedId={selectedTaskId} tasks={visible} />
+        </section>
       </section>
       <CreateTaskDialog clients={clients} onCancel={() => setCreating(false)} onSubmit={(taskClientId, text) => { const task = createTask(taskClientId, text); setSelectedTaskId(task.id); setStatus("ready"); setCreating(false); }} open={creating} />
     </section>

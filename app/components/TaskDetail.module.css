@@ -1,4 +1,4 @@
-.detail { display: grid; min-width: 0; min-height: 0; padding: 16px 18px 18px; grid-template-rows: auto minmax(0, 1fr) auto; background: #fff; }
+.detail { display: grid; min-width: 0; padding: 2px 26px 17px 30px; grid-template-rows: auto auto auto; }
 .detail header, .detail footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .detail header strong, .detail header small { display: block; }
 .detail header strong { font-size: 12px; font-weight: 590; }
@@ -7,7 +7,7 @@
 .detail button.primary { background: #30302e; color: #fff; }
 .detail button:disabled { opacity: .35; cursor: default; }
 .detail button svg { width: 13px; height: 13px; }
-.detail textarea { min-height: 0; margin-top: 28px; resize: none; border: 0; outline: 0; background: transparent; color: #30302e; font-family: inherit; font-size: 13px; line-height: 1.65; }
+.detail textarea { min-height: 112px; margin-top: 18px; padding: 0; resize: none; border: 0; outline: 0; background: transparent; color: #30302e; font-family: inherit; font-size: 13px; line-height: 1.65; }
 .detail textarea[readonly] { cursor: default; }
 .detail footer { min-height: 34px; margin-top: 12px; }
 .detail footer small { color: #92928d; font-size: 10px; }
