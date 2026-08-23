@@ -1,0 +1,45 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  color: #343432;
+  font-size: 13px;
+}
+
+.table th {
+  height: 28px;
+  padding: 0 10px;
+  color: #777773;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.table th:first-child {
+  width: 56%;
+}
+
+.table tr {
+  height: 29px;
+}
+
+.table tbody tr:nth-child(odd) {
+  background: #f7f7f6;
+}
+
+.table tbody tr[aria-selected="true"] {
+  background: #dceafa;
+}
+
+.table td {
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table td:first-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}

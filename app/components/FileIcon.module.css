@@ -1,0 +1,25 @@
+.folder[data-size="large"] {
+  width: 76px;
+  height: 57px;
+  filter: drop-shadow(0 1px 1px rgb(0 82 153 / 18%));
+}
+
+.folder[data-size="small"] {
+  width: 22px;
+  height: 17px;
+}
+
+.file {
+  color: #5c8fc4;
+  stroke-width: 1.45;
+}
+
+.file[data-size="large"] {
+  width: 52px;
+  height: 52px;
+}
+
+.file[data-size="small"] {
+  width: 17px;
+  height: 17px;
+}

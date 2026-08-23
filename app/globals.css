@@ -7,4 +7,23 @@ body {
   min-height: 100%;
   margin: 0;
   background: #ffffff;
+  color: #171717;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #0a84ff;
+  outline-offset: 1px;
+}
+
+::selection {
+  background: #b8d9fb;
 }

@@ -1,0 +1,74 @@
+.inspector {
+  width: 238px;
+  min-width: 238px;
+  height: 100%;
+  padding: 18px 16px;
+  overflow-y: auto;
+  background: #f6f6f4;
+}
+
+.inspector header {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.inspector header strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector section {
+  margin-top: 24px;
+}
+
+.inspector h2 {
+  margin: 0 0 9px;
+  font-size: 11px;
+}
+
+.inspector dl {
+  display: grid;
+  margin: 0;
+  grid-template-columns: auto 1fr;
+  gap: 8px 12px;
+  font-size: 10px;
+}
+
+.inspector dt {
+  color: #858580;
+}
+
+.inspector dd {
+  margin: 0;
+  text-align: right;
+  text-transform: capitalize;
+}
+
+.inspector nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.inspector nav button {
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.inspector nav button[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px #777;
+}
+
+.inspector > p {
+  margin: 0;
+  color: #8a8a85;
+  font-size: 11px;
+}
