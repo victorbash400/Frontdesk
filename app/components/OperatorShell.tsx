@@ -27,6 +27,7 @@ export function OperatorShell() {
   const [sort, setSort] = useState<SortMode>("name-asc");
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<DialogState>();
+  const [dialogError, setDialogError] = useState<string>();
   const [contextMenu, setContextMenu] = useState<ContextMenuState>();
   const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase());
 
@@ -62,16 +63,26 @@ export function OperatorShell() {
 
   function createItem(name: string, mode: "create-client" | "create-folder") {
     const parentId = mode === "create-folder" && navigation.destination.type === "folder" ? navigation.destination.id : null;
-    const node = fileSystem.createNode(name, mode === "create-client" ? "client" : "folder", parentId);
-    setDialog(undefined);
-    setSelectedId(node.id);
+    try {
+      const node = fileSystem.createNode(name, mode === "create-client" ? "client" : "folder", parentId);
+      setDialog(undefined);
+      setDialogError(undefined);
+      setSelectedId(node.id);
+    } catch (reason) {
+      setDialogError(reason instanceof Error ? reason.message : "That name is already in use.");
+    }
   }
 
   function submitDialog(name: string) {
     if (dialog?.mode === "rename" && dialog.node) {
-      fileSystem.updateNode(dialog.node.id, { name });
-      setDialog(undefined);
-      setContextMenu(undefined);
+      try {
+        fileSystem.updateNode(dialog.node.id, { name });
+        setDialog(undefined);
+        setDialogError(undefined);
+        setContextMenu(undefined);
+      } catch (reason) {
+        setDialogError(reason instanceof Error ? reason.message : "That name is already in use.");
+      }
       return;
     }
     if (dialog?.mode === "create-client" || dialog?.mode === "create-folder") createItem(name, dialog.mode);
@@ -113,7 +124,7 @@ export function OperatorShell() {
           {client ? <ClientChatPanel clientId={client.id} key={client.id} open={chatOpen} /> : null}
         </section>
       </section>
-      <CreateItemDialog initialName={dialog?.mode === "rename" ? dialog.node?.name : ""} onCancel={() => setDialog(undefined)} onSubmit={submitDialog} open={Boolean(dialog)} submitLabel={dialog?.mode === "rename" ? "Rename" : dialog?.mode === "create-client" ? "Create Client" : "Create Folder"} title={dialog?.mode === "rename" ? "Rename Item" : dialog?.mode === "create-client" ? "New Client" : "New Folder"} />
+      <CreateItemDialog error={dialogError} initialName={dialog?.mode === "rename" ? dialog.node?.name : ""} onCancel={() => { setDialog(undefined); setDialogError(undefined); }} onNameChange={() => setDialogError(undefined)} onSubmit={submitDialog} open={Boolean(dialog)} submitLabel={dialog?.mode === "rename" ? "Rename" : dialog?.mode === "create-client" ? "Create Client" : "Create Folder"} title={dialog?.mode === "rename" ? "Rename Item" : dialog?.mode === "create-client" ? "New Client" : "New Folder"} />
       {contextMenu ? <ItemContextMenu onAttentionToggle={() => { fileSystem.updateNode(contextMenu.node.id, { needsAttention: !contextMenu.node.needsAttention }); setContextMenu(undefined); }} onClose={() => setContextMenu(undefined)} onRename={() => setDialog({ mode: "rename", node: contextMenu.node })} onShareToggle={() => { fileSystem.updateNode(contextMenu.node.id, { shared: !contextMenu.node.shared }); setContextMenu(undefined); }} onTrashToggle={() => { fileSystem.setTrashed(contextMenu.node.id, !contextMenu.node.trashedAt); setSelectedId(undefined); setContextMenu(undefined); }} state={contextMenu} /> : null}
       {fileSystem.error ? <p className={styles.error} role="alert">{fileSystem.error}</p> : null}
     </main>

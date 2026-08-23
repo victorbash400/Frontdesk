@@ -44,6 +44,17 @@
   box-shadow: 0 0 0 3px rgb(10 132 255 / 13%);
 }
 
+.dialog input[aria-invalid="true"] {
+  border-color: #c9574f;
+  box-shadow: 0 0 0 3px rgb(201 87 79 / 11%);
+}
+
+.error {
+  margin: 7px 0 0;
+  color: #a5322d;
+  font-size: 11px;
+}
+
 .dialog footer {
   display: flex;
   margin-top: 18px;

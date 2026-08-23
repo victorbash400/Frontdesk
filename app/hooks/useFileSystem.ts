@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { loadFileSystem, saveFileSystem } from "../lib/fileSystemStorage";
+import { hasSiblingName } from "../lib/fileSystemNames";
 import type { FileSystemData, FileSystemNode, NodeKind, TagName } from "../types/filesystem";
 
 const initialData: FileSystemData = { version: 1, nodes: [] };
@@ -41,6 +42,7 @@ export function useFileSystem() {
   }, []);
 
   const createNode = useCallback((name: string, kind: NodeKind, parentId: string | null) => {
+    if (hasSiblingName(data.nodes, name, parentId)) throw new Error(`“${name}” already exists in this folder.`);
     const timestamp = new Date().toISOString();
     const node: FileSystemNode = {
       id: crypto.randomUUID(),
@@ -56,14 +58,19 @@ export function useFileSystem() {
     };
     commit((current) => ({ ...current, nodes: [...current.nodes, node] }));
     return node;
-  }, [commit]);
+  }, [commit, data.nodes]);
 
   const updateNode = useCallback((id: string, update: Partial<Pick<FileSystemNode, "name" | "parentId" | "shared" | "needsAttention" | "trashedAt">>) => {
+    const currentNode = data.nodes.find((node) => node.id === id);
+    const parentId = update.parentId === undefined ? currentNode?.parentId : update.parentId;
+    if (update.name && currentNode && parentId !== undefined && hasSiblingName(data.nodes, update.name, parentId, id)) {
+      throw new Error(`“${update.name}” already exists in this folder.`);
+    }
     commit((current) => ({
       ...current,
       nodes: current.nodes.map((node) => node.id === id ? { ...node, ...update, updatedAt: new Date().toISOString() } : node),
     }));
-  }, [commit]);
+  }, [commit, data.nodes]);
 
   const toggleTag = useCallback((id: string, tag: TagName) => {
     commit((current) => ({

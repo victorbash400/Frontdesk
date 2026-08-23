@@ -9,11 +9,13 @@ type CreateItemDialogProps = {
   title: string;
   submitLabel: string;
   initialName?: string;
+  error?: string;
   onCancel: () => void;
+  onNameChange?: () => void;
   onSubmit: (name: string) => void;
 };
 
-export function CreateItemDialog({ open, title, submitLabel, initialName = "", onCancel, onSubmit }: CreateItemDialogProps) {
+export function CreateItemDialog({ open, title, submitLabel, initialName = "", error, onCancel, onNameChange, onSubmit }: CreateItemDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState(initialName);
 
@@ -39,7 +41,8 @@ export function CreateItemDialog({ open, title, submitLabel, initialName = "", o
       <form onSubmit={submit}>
         <h2>{title}</h2>
         <label htmlFor="item-name">Name</label>
-        <input autoFocus id="item-name" onChange={(event) => setName(event.target.value)} value={name} />
+        <input aria-describedby={error ? "item-name-error" : undefined} aria-invalid={Boolean(error)} autoFocus id="item-name" onChange={(event) => { setName(event.target.value); onNameChange?.(); }} value={name} />
+        {error ? <p className={styles.error} id="item-name-error" role="alert">{error}</p> : null}
         <footer>
           <button onClick={onCancel} type="button">Cancel</button>
           <button disabled={!name.trim()} type="submit">{submitLabel}</button>
