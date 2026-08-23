@@ -1,14 +1,16 @@
 .table {
-  width: 100%;
-  border-collapse: collapse;
+  width: calc(100% - 20px);
+  margin: 0 10px;
+  border-collapse: separate;
+  border-spacing: 0 1px;
   table-layout: fixed;
   color: #343432;
   font-size: 13px;
 }
 
 .table th {
-  height: 28px;
-  padding: 0 10px;
+  height: 27px;
+  padding: 0 9px;
   color: #777773;
   font-size: 12px;
   font-weight: 500;
@@ -17,25 +19,35 @@
 
 .table th:first-child {
   width: 56%;
+  color: #343432;
+  font-weight: 650;
 }
 
 .table tr {
-  height: 29px;
+  height: 25px;
 }
 
-.table tbody tr:nth-child(odd) {
+.table tbody tr:nth-child(even) td {
   background: #f7f7f6;
 }
 
-.table tbody tr[aria-selected="true"] {
+.table tbody tr[aria-selected="true"] td {
   background: #dceafa;
 }
 
 .table td {
-  padding: 0 10px;
+  padding: 0 9px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.table td:first-child {
+  border-radius: 7px 0 0 7px;
+}
+
+.table td:last-child {
+  border-radius: 0 7px 7px 0;
 }
 
 .table td:first-child {

@@ -1,4 +1,4 @@
-import { Clock3, FileText, Folder, Mail, MessageSquareText, Phone, Share2, Trash2, UserRoundCheck } from "lucide-react";
+import { Clock3, FileText, Folder, FolderPlus, Mail, MessageSquareText, Phone, Share2, Trash2, UserRoundCheck } from "lucide-react";
 
 import { locationLabels } from "../lib/fileSystemSelectors";
 import type { Destination, SmartLocation } from "../types/filesystem";
@@ -13,16 +13,23 @@ const sections: Array<{ label?: string; items: Array<{ location: SmartLocation; 
 
 type SidebarProps = {
   destination: Destination;
+  onCreateClient: () => void;
   onNavigate: (location: SmartLocation) => void;
 };
 
-export function Sidebar({ destination, onNavigate }: SidebarProps) {
+export function Sidebar({ destination, onCreateClient, onNavigate }: SidebarProps) {
   return (
     <aside className={styles.sidebar}>
       <nav aria-label="Filesystem locations">
         {sections.map((section) => (
           <section key={section.label ?? "primary"}>
             {section.label ? <h2>{section.label}</h2> : null}
+            {section.label === "Favorites" ? (
+              <button onClick={onCreateClient} type="button">
+                <FolderPlus aria-hidden="true" />
+                <span>New Client</span>
+              </button>
+            ) : null}
             {section.items.map(({ location, icon: Icon, customIcon }) => {
               const active = destination.type === "location" && destination.location === location;
               return (

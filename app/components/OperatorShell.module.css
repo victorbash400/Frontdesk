@@ -5,7 +5,7 @@
   padding: 8px;
   gap: 8px;
   overflow: hidden;
-  background: #eeeeec;
+  background: #fff;
   outline: none;
 }
 
@@ -14,7 +14,7 @@
   min-width: 0;
   height: 100%;
   flex: 1;
-  grid-template-rows: 56px minmax(0, 1fr);
+  grid-template-rows: 64px minmax(0, 1fr);
   background: #fff;
 }
 
@@ -28,8 +28,6 @@
   min-width: 0;
   height: 100%;
   flex: 1;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) 22px;
 }
 
 .error {

@@ -1,7 +1,7 @@
 .toolbar {
   display: grid;
-  min-height: 56px;
-  padding: 9px 14px;
+  min-height: 64px;
+  padding: 10px 14px;
   grid-template-columns: auto minmax(110px, 1fr) auto;
   align-items: center;
   gap: 14px;
@@ -28,7 +28,8 @@
 }
 
 .history,
-.viewModes {
+.viewModes,
+.actions {
   overflow: hidden;
   border-radius: 11px;
   background: #f3f3f1;
@@ -75,6 +76,18 @@
 
 .tools {
   gap: 8px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+}
+
+.actions > button,
+.actions .more summary {
+  width: 36px;
+  padding: 0;
+  border-radius: 0;
 }
 
 .sort {

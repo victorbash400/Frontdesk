@@ -22,7 +22,8 @@ type ToolbarProps = {
   viewMode: ViewMode;
   onBack: () => void;
   onForward: () => void;
-  onCreate: () => void;
+  onCreateClient: () => void;
+  onCreateFolder: () => void;
   onInspectorToggle: () => void;
   onShare: () => void;
   onQueryChange: (query: string) => void;
@@ -30,9 +31,8 @@ type ToolbarProps = {
   onViewModeChange: (mode: ViewMode) => void;
 };
 
-export function Toolbar({ destination, title, canGoBack, canGoForward, hasSelection, query, sort, viewMode, onBack, onForward, onCreate, onInspectorToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
-  const createLabel = destination.type === "location" && destination.location === "clients" ? "New Client" : "New Folder";
-  const canCreate = destination.type === "folder" || destination.type === "location" && destination.location === "clients";
+export function Toolbar({ destination, title, canGoBack, canGoForward, hasSelection, query, sort, viewMode, onBack, onForward, onCreateClient, onCreateFolder, onInspectorToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
+  const canCreateFolder = destination.type === "folder";
 
   function closeMenu(event: MouseEvent<HTMLButtonElement>) {
     event.currentTarget.closest("details")?.removeAttribute("open");
@@ -60,15 +60,18 @@ export function Toolbar({ destination, title, canGoBack, canGoForward, hasSelect
             <option value="date-asc">Oldest</option>
           </select>
         </label>
-        <button aria-label="Share" disabled={!hasSelection} onClick={onShare} title="Share" type="button"><Share /></button>
-        <button aria-label="Tags" disabled={!hasSelection} onClick={onInspectorToggle} title="Tags" type="button"><Tag /></button>
-        <details className={styles.more}>
-          <summary aria-label="More" title="More"><Ellipsis /></summary>
-          <menu>
-            {canCreate ? <button onClick={(event) => { closeMenu(event); onCreate(); }} type="button">{createLabel}</button> : null}
-            {hasSelection ? <button onClick={(event) => { closeMenu(event); onInspectorToggle(); }} type="button">Get Info</button> : null}
-          </menu>
-        </details>
+        <span className={styles.actions}>
+          <button aria-label="Share" disabled={!hasSelection} onClick={onShare} title="Share" type="button"><Share /></button>
+          <button aria-label="Tags" disabled={!hasSelection} onClick={onInspectorToggle} title="Tags" type="button"><Tag /></button>
+          <details className={styles.more}>
+            <summary aria-label="More" title="More"><Ellipsis /></summary>
+            <menu>
+              {canCreateFolder ? <button onClick={(event) => { closeMenu(event); onCreateFolder(); }} type="button">New Folder</button> : null}
+              {!canCreateFolder ? <button onClick={(event) => { closeMenu(event); onCreateClient(); }} type="button">New Client</button> : null}
+              {hasSelection ? <button onClick={(event) => { closeMenu(event); onInspectorToggle(); }} type="button">Get Info</button> : null}
+            </menu>
+          </details>
+        </span>
         <label className={styles.search}>
           <Search aria-hidden="true" />
           <input aria-label="Search Operator" onChange={(event) => onQueryChange(event.target.value)} placeholder="Search" type="search" value={query} />
