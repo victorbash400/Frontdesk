@@ -73,9 +73,10 @@ def test_plugin_installations_are_account_scoped() -> None:
         initial = client.get("/api/plugins", headers=first_headers)
         assert initial.status_code == 200
         initial_states = {plugin["id"]: plugin for plugin in initial.json()["plugins"]}
-        assert initial_states["code"]["installed"] is True
-        assert initial_states["code"]["connected"] is True
-        assert initial_states["notion"]["installed"] is False
+        assert all(plugin["installed"] is False for plugin in initial_states.values())
+        assert "code" not in initial_states
+        assert "web-search" not in initial_states
+        assert initial_states["google-workspace"]["installed"] is False
 
         installed = client.post("/api/plugins/notion", headers=first_headers)
         assert installed.status_code == 201
@@ -83,9 +84,17 @@ def test_plugin_installations_are_account_scoped() -> None:
         second_states = {plugin["id"]: plugin for plugin in client.get("/api/plugins", headers=second_headers).json()["plugins"]}
         assert second_states["notion"]["installed"] is False
 
+        workspace = client.post("/api/plugins/google-workspace", headers=first_headers)
+        assert workspace.status_code == 201
+        assert {plugin["id"]: plugin for plugin in workspace.json()["plugins"]}["google-workspace"]["installed"] is True
+
         removed = client.delete("/api/plugins/notion", headers=first_headers)
         assert removed.status_code == 200
         assert {plugin["id"]: plugin for plugin in removed.json()["plugins"]}["notion"]["installed"] is False
+
+        removed_workspace = client.delete("/api/plugins/google-workspace", headers=first_headers)
+        assert removed_workspace.status_code == 200
+        assert {plugin["id"]: plugin for plugin in removed_workspace.json()["plugins"]}["google-workspace"]["installed"] is False
 
 
 def test_workspace_permissions_are_account_scoped() -> None:

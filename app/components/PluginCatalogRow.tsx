@@ -8,7 +8,7 @@ export function PluginCatalogRow({ onAdd, plugin, state }: { onAdd: () => void; 
     <article className={styles.row}>
       <PluginIcon plugin={plugin} />
       <span><strong>{plugin.name}</strong><small>{plugin.description}</small></span>
-      <button onClick={onAdd} type="button">Add</button>
+      <button disabled={state.installed} onClick={onAdd} type="button">{state.installed ? "Added" : "Add"}</button>
       {!state.connection_supported && state.setup_message ? <p>{state.setup_message}</p> : null}
     </article>
   );

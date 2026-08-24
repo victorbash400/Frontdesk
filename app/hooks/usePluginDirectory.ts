@@ -29,7 +29,7 @@ export function usePluginDirectory(accountId: string) {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => void refresh());
     const onMessage = (event: MessageEvent) => {
-      if (event.data?.type === "front-desk-plugin-connected") void refresh();
+      if (event.data?.type === "front-desk-plugin-connected" || event.data?.type === "front-desk-google-connected") void refresh();
     };
     window.addEventListener("message", onMessage);
     window.addEventListener("focus", refresh);

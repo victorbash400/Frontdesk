@@ -2,7 +2,7 @@
   display: grid;
   min-height: 68px;
   padding: 0 16px;
-  grid-template-columns: 24px minmax(0, 1fr) 38px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
 }
@@ -50,6 +50,10 @@
 .switch[aria-checked="true"] { background: #30302e; }
 .switch[aria-checked="true"] span { transform: translateX(16px); }
 .switch:disabled { cursor: default; }
+.actions { display: flex; align-items: center; gap: 9px; }
+.remove { display: grid; width: 26px; height: 26px; padding: 0; place-items: center; border: 0; background: transparent; color: #aaa9a4; cursor: pointer; }
+.remove:hover { color: #6d6d69; }
+.remove svg { width: 14px; height: 14px; stroke-width: 1.6; }
 
 .copy small button { display: inline-grid; width: 18px; height: 18px; margin: -3px 0 -4px 4px; padding: 0; place-items: center; border: 0; background: transparent; color: #8f8f8a; cursor: pointer; vertical-align: middle; }
 .copy small button svg { width: 13px; height: 13px; }

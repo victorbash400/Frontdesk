@@ -2,10 +2,10 @@ import type { ReactNode } from "react";
 
 import styles from "./PluginSection.module.css";
 
-export function PluginSection({ children, description, title }: { children: ReactNode; description?: string; title: string }) {
+export function PluginSection({ action, children, description, title }: { action?: ReactNode; children: ReactNode; description?: string; title: string }) {
   return (
     <section className={styles.section}>
-      <header><h2>{title}</h2>{description ? <p>{description}</p> : null}</header>
+      <header><span><h2>{title}</h2>{description ? <p>{description}</p> : null}</span>{action}</header>
       <div className={styles.list}>{children}</div>
     </section>
   );

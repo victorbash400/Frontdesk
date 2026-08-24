@@ -20,7 +20,7 @@ const icons = {
 
 export function WorkspacePermissions({ connected, permissions, onChange }: { connected: boolean; permissions: WorkspacePermission[]; onChange: (permissionId: string, enabled: boolean) => void }) {
   return <>{permissions.map((permission) => {
-    const plugin: PluginDefinition = { id: permission.id, name: permission.name, description: permission.description, group: "built-in", color: "#6f6f6b", icon: icons[permission.id as keyof typeof icons] || FileText, permissions: [] };
+    const plugin: PluginDefinition = { id: permission.id, name: permission.name, description: permission.description, group: "featured", color: "#6f6f6b", icon: icons[permission.id as keyof typeof icons] || FileText, permissions: [] };
     return <PluginRow disabled={!connected} enabled={connected && permission.enabled} key={permission.id} onToggle={() => onChange(permission.id, !permission.enabled)} plugin={plugin} />;
   })}</>;
 }

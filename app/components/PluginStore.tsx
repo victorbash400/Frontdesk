@@ -26,14 +26,14 @@ export function PluginStore({ accountId }: { accountId: string }) {
       const state = stateById.get(plugin.id);
       return state ? [{ plugin, state }] : [];
     });
-  const installed = entries.filter(({ state }) => state.installed);
-  const available = entries.filter(({ state }) => !state.installed);
+  const workspace = entries.find(({ plugin }) => plugin.id === "google-workspace");
+  const installed = entries.filter(({ plugin, state }) => plugin.id !== "google-workspace" && state.installed);
   const pendingState = pendingPlugin ? stateById.get(pendingPlugin.id) : undefined;
 
   const add = async (plugin: PluginDefinition, state: PluginState) => {
     try {
       await directory.add(plugin.id);
-      if (state.connection_supported) setPendingPlugin(plugin);
+      if (state.connection_type === "mcp" && state.connection_supported) setPendingPlugin(plugin);
     } catch (reason) {
       directory.setError(reason instanceof Error ? reason.message : "Could not add plugin");
     }
@@ -50,18 +50,18 @@ export function PluginStore({ accountId }: { accountId: string }) {
       <label className={styles.search}><Search aria-hidden="true" /><input aria-label="Search plugins" onChange={(event) => setQuery(event.target.value)} placeholder="Search plugins" type="search" value={query} /></label>
       {directory.error ? <p className={styles.error} role="alert">{directory.error}</p> : null}
       {view === "plugins" ? <>
-        <WorkspaceSection accountId={accountId} />
-        <PluginSection title="Plugins">
+        {workspace?.state.installed ? <WorkspaceSection accountId={accountId} onRemove={() => void directory.remove("google-workspace")} /> : null}
+        {installed.length ? <PluginSection title="Plugins">
           {installed.map(({ plugin, state }) => <PluginRow
-            detail={state.built_in ? plugin.description : state.connected ? `${state.account_label || plugin.description}${state.tool_count ? ` · ${state.tool_count} tools` : ""}` : state.setup_message || "Installed, not connected"}
-            disabled={state.built_in}
+            detail={state.connected ? `${state.account_label || plugin.description}${state.tool_count ? ` · ${state.tool_count} tools` : ""}` : state.setup_message || "Added, not connected"}
             enabled={state.connected}
             key={plugin.id}
+            onRemove={() => void directory.remove(plugin.id)}
             onToggle={() => setPendingPlugin(plugin)}
             plugin={plugin}
           />)}
-        </PluginSection>
-      </> : <AvailablePluginGroups entries={available} onAdd={(plugin, state) => void add(plugin, state)} />}
+        </PluginSection> : !workspace?.state.installed ? <p className={styles.empty}>No plugins added. Browse the directory to add one.</p> : null}
+      </> : <AvailablePluginGroups entries={entries} onAdd={(plugin, state) => void add(plugin, state)} />}
       <PluginConnectionDialog
         connected={pendingState?.connected || false}
         onCancel={() => setPendingPlugin(undefined)}

@@ -9,7 +9,7 @@ import { WorkspaceProfile } from "./WorkspaceProfile";
 import styles from "./WorkspaceSection.module.css";
 
 
-export function WorkspaceSection({ accountId }: { accountId: string }) {
+export function WorkspaceSection({ accountId, onRemove }: { accountId: string; onRemove: () => void }) {
   const workspace = useGoogleWorkspaceConnection();
   const [showEmail, setShowEmail] = useState(true);
 
@@ -26,7 +26,7 @@ export function WorkspaceSection({ accountId }: { accountId: string }) {
 
   return <>
     {workspace.error ? <p className={styles.error} role="alert">{workspace.error}</p> : null}
-    <PluginSection description="Your connected Google account." title="Workspace">
+    <PluginSection action={<button onClick={onRemove} type="button">Remove</button>} description="Connect an account, then choose the services Front Desk may use." title="Workspace">
       <WorkspaceProfile
         configured={workspace.configured}
         connected={workspace.connected}
@@ -37,8 +37,6 @@ export function WorkspaceSection({ accountId }: { accountId: string }) {
         onEmailVisibilityChange={changeEmailVisibility}
         showEmail={showEmail}
       />
-    </PluginSection>
-    <PluginSection description="Services Front Desk may use from that account." title="Permissions">
       <WorkspacePermissions connected={workspace.connected} onChange={(permissionId, enabled) => run(workspace.setPermission(permissionId, enabled))} permissions={workspace.permissions} />
     </PluginSection>
   </>;

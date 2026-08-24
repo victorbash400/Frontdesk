@@ -6,7 +6,7 @@ import styles from "./AvailablePluginGroups.module.css";
 export function AvailablePluginGroups({ entries, onAdd }: { entries: Array<{ plugin: PluginDefinition; state: PluginState }>; onAdd: (plugin: PluginDefinition, state: PluginState) => void }) {
   if (!entries.length) return <p className={styles.empty}>No other plugins match this search.</p>;
   return <section aria-label="Plugin directory" className={styles.section}>
-    {pluginGroups.filter((group) => group.id !== "built-in").map((group) => {
+    {pluginGroups.map((group) => {
       const groupEntries = entries.filter(({ plugin }) => plugin.group === group.id);
       if (!groupEntries.length) return null;
       return <section className={styles.group} key={group.id}>

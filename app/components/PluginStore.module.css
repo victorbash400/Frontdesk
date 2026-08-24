@@ -8,4 +8,5 @@
 .search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: #2c2c2a; font-size: 11px; }
 .error { margin: 18px 0 0; color: #a5322d; font-size: 11px; }
 .loading { margin: 42px auto; color: #92928e; font-size: 11px; }
+.empty { margin: 64px 0; color: #92928e; font-size: 11px; text-align: center; }
 @media (max-width: 760px) { .store { width: calc(100% - 32px); } .heading { align-items: flex-start; flex-direction: column; } }
