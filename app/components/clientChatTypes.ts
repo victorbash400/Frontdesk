@@ -1,6 +1,6 @@
 export type ClientChatMessage =
   | { id: string; kind: "message"; role: "user" | "assistant"; text: string }
-  | { id: string; kind: "reasoning"; text: string }
+  | { id: string; kind: "reasoning"; text: string; startedAt?: number; finishedAt?: number }
   | { id: string; kind: "tool"; name: string; status: "running" | "done" | "error" };
 
 export type ClientChat = {

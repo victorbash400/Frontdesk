@@ -33,7 +33,7 @@ def create_front_desk_app() -> App:
         generate_content_config=types.GenerateContentConfig(
             thinking_config=types.ThinkingConfig(
                 include_thoughts=True,
-                thinking_level=types.ThinkingLevel.LOW,
+                thinking_level=types.ThinkingLevel.MEDIUM,
             ),
         ),
     )

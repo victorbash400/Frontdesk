@@ -10,7 +10,7 @@ type ClientChatMessageBubbleProps = {
 
 export function ClientChatMessageBubble({ message }: ClientChatMessageBubbleProps) {
   if (message.kind === "tool") return <ClientToolIndicator item={message} />;
-  if (message.kind === "reasoning") return <ClientReasoningIndicator text={message.text} />;
+  if (message.kind === "reasoning") return <ClientReasoningIndicator item={message} />;
   if (message.role === "assistant") return <ClientChatMarkdown content={message.text} />;
   return <p className={styles.message} data-role={message.role}>{message.text}</p>;
 }
