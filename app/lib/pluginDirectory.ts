@@ -11,6 +11,7 @@ export type PluginDefinition = {
   group: PluginGroup;
   color: string;
   icon: LucideIcon;
+  logo?: string;
   permissions: string[];
 };
 
@@ -37,12 +38,12 @@ export const googleWorkspacePlugin: PluginDefinition = {
 
 export const pluginDirectory: PluginDefinition[] = [
   googleWorkspacePlugin,
-  { id: "github", name: "GitHub", description: "Work with repositories, issues, and pull requests", group: "featured", color: "#343431", icon: GitBranch, permissions: ["Read authorized repositories", "Create approved issues, comments, and pull requests"] },
+  { id: "github", name: "GitHub", description: "Work with repositories, issues, and pull requests", group: "featured", color: "#343431", icon: GitBranch, logo: "/github-142-svgrepo-com.svg", permissions: ["Read authorized repositories", "Create approved issues, comments, and pull requests"] },
   { id: "notion", name: "Notion", description: "Search and update connected Notion workspaces", group: "featured", color: "#333330", icon: FileText, permissions: ["Search authorized pages", "Create and update workspace content"] },
-  { id: "linear", name: "Linear", description: "Plan projects and manage issues", group: "productivity", color: "#675bd3", icon: CircleDot, permissions: ["Read projects and issues", "Create and update approved work"] },
-  { id: "atlassian", name: "Atlassian", description: "Work across Jira and Confluence", group: "productivity", color: "#1769e0", icon: Building2, permissions: ["Read Jira and Confluence work", "Create approved issues, pages, and comments"] },
-  { id: "vercel", name: "Vercel", description: "Inspect projects, deployments, and logs", group: "developer", color: "#252523", icon: Bot, permissions: ["Read authorized projects", "Inspect deployments and runtime logs"] },
-  { id: "slack", name: "Slack", description: "Search channels and work with messages", group: "communication", color: "#7b4ca0", icon: MessageCircle, permissions: ["Search approved Slack content", "Draft and send approved messages"] },
+  { id: "linear", name: "Linear", description: "Plan projects and manage issues", group: "productivity", color: "#675bd3", icon: CircleDot, logo: "/linear-svgrepo-com.svg", permissions: ["Read projects and issues", "Create and update approved work"] },
+  { id: "atlassian", name: "Atlassian", description: "Work across Jira and Confluence", group: "productivity", color: "#1769e0", icon: Building2, logo: "/atlassian-svgrepo-com.svg", permissions: ["Read Jira and Confluence work", "Create approved issues, pages, and comments"] },
+  { id: "vercel", name: "Vercel", description: "Inspect projects, deployments, and logs", group: "developer", color: "#252523", icon: Bot, logo: "/vercel-icon-svgrepo-com.svg", permissions: ["Read authorized projects", "Inspect deployments and runtime logs"] },
+  { id: "slack", name: "Slack", description: "Search channels and work with messages", group: "communication", color: "#7b4ca0", icon: MessageCircle, logo: "/slack-svgrepo-com.svg", permissions: ["Search approved Slack content", "Draft and send approved messages"] },
 ];
 
 export const pluginGroups: Array<{ id: PluginGroup; label: string }> = [
