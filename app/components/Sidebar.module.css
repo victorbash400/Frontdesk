@@ -4,9 +4,10 @@
   min-width: 240px;
   height: 100%;
   overflow: visible;
-  border: 1px solid #fff;
+  border: 0;
   border-radius: 20px;
-  background: #f6f6f6;
+  background: #f9f9f9;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 7%), inset 0 0 0 1px rgb(255 255 255 / 82%);
   color: #282826;
 }
 
