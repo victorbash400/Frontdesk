@@ -1,7 +1,7 @@
 import { accountStorageKey } from "./accountStorage";
 import type { OperatorSkill } from "../types/skill";
 
-const storageNamespace = "operator-skills-v1";
+const storageNamespace = "front-desk-skills-v1";
 
 const starterSkills: OperatorSkill[] = [
   {

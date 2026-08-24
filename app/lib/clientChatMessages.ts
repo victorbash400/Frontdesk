@@ -2,6 +2,13 @@ import type { ClientChatMessage, ClientChatStreamEvent } from "../components/cli
 
 
 export function applyClientChatEvent(messages: ClientChatMessage[], event: ClientChatStreamEvent): ClientChatMessage[] {
+  if (event.type === "reasoning") {
+    const last = messages.at(-1);
+    if (last?.kind === "reasoning") {
+      return messages.map((message, index) => index === messages.length - 1 ? { ...last, text: last.text + event.content } : message);
+    }
+    return [...messages, { id: crypto.randomUUID(), kind: "reasoning", text: event.content }];
+  }
   if (event.type === "content") {
     const last = messages.at(-1);
     if (last?.kind === "message" && last.role === "assistant") {

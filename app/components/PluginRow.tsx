@@ -5,10 +5,13 @@ type PluginRowProps = {
   enabled: boolean;
   plugin: PluginDefinition;
   onToggle: () => void;
+  enabledLabel?: string;
+  disabledLabel?: string;
 };
 
-export function PluginRow({ enabled, plugin, onToggle }: PluginRowProps) {
+export function PluginRow({ disabledLabel = "Connect", enabled, enabledLabel = "Disconnect", plugin, onToggle }: PluginRowProps) {
   const Icon = plugin.icon;
+  const action = enabled ? enabledLabel : disabledLabel;
   return (
     <article className={styles.row}>
       <span className={styles.icon} style={{ "--plugin-color": plugin.color } as React.CSSProperties}><Icon aria-hidden="true" /></span>
@@ -16,7 +19,7 @@ export function PluginRow({ enabled, plugin, onToggle }: PluginRowProps) {
         <strong>{plugin.name}</strong>
         <small>{plugin.description}</small>
       </span>
-      <button aria-label={`${enabled ? "Disconnect" : "Connect"} ${plugin.name}`} aria-checked={enabled} className={styles.switch} onClick={onToggle} role="switch" title={`${enabled ? "Disconnect" : "Connect"} ${plugin.name}`} type="button"><span /></button>
+      <button aria-label={`${action} ${plugin.name}`} aria-checked={enabled} className={styles.switch} onClick={onToggle} role="switch" title={`${action} ${plugin.name}`} type="button"><span /></button>
     </article>
   );
 }

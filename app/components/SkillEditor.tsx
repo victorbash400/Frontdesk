@@ -37,9 +37,9 @@ export function SkillEditor({ skill, onBack, onSave }: SkillEditorProps) {
       </header>
       <article>
         <input aria-label="Skill name" className={styles.name} onChange={(event) => { setName(event.target.value); setError(undefined); }} value={name} />
-        <input aria-label="When to use this skill" className={styles.description} onChange={(event) => setDescription(event.target.value)} placeholder="When should Operator use this skill?" value={description} />
+        <input aria-label="When to use this skill" className={styles.description} onChange={(event) => setDescription(event.target.value)} placeholder="When should Front Desk use this skill?" value={description} />
         <label htmlFor="skill-instructions">Instructions</label>
-        <textarea aria-label="Skill instructions" id="skill-instructions" onChange={(event) => setInstructions(event.target.value)} placeholder="Write the instructions Operator should follow." spellCheck="true" value={instructions} />
+        <textarea aria-label="Skill instructions" id="skill-instructions" onChange={(event) => setInstructions(event.target.value)} placeholder="Write the instructions Front Desk should follow." spellCheck="true" value={instructions} />
         {error ? <p role="alert">{error}</p> : null}
       </article>
     </section>

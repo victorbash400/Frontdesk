@@ -1,7 +1,7 @@
 import type { OperatorTask } from "../types/task";
 import { accountStorageKey } from "./accountStorage";
 
-const storageNamespace = "operator-tasks-v1";
+const storageNamespace = "front-desk-tasks-v1";
 
 export function loadTasks(accountId: string): OperatorTask[] {
   const stored = window.localStorage.getItem(accountStorageKey(storageNamespace, accountId));

@@ -12,7 +12,7 @@ export type TagName = keyof typeof tagColors;
 export type NodeKind = "client" | "folder" | "profile" | "task" | "audio" | "email" | "document" | "request" | "note";
 export type ViewMode = "grid" | "list";
 export type SortMode = "name-asc" | "name-desc" | "date-desc" | "date-asc";
-export type SmartLocation = "clients" | "needs-you" | "tasks" | "calls" | "emails" | "documents" | "trash" | "plugins" | "skills";
+export type SmartLocation = "clients" | "needs-you" | "tasks" | "goals" | "calls" | "emails" | "documents" | "trash" | "plugins" | "skills";
 
 export type FileSystemNode = {
   id: string;

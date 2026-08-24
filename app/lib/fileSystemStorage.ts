@@ -1,7 +1,7 @@
 import type { FileSystemData } from "../types/filesystem";
 import { accountStorageKey } from "./accountStorage";
 
-const storageNamespace = "operator-filesystem-v1";
+const storageNamespace = "front-desk-filesystem-v1";
 const emptyFileSystem: FileSystemData = { version: 1, nodes: [] };
 
 export function loadFileSystem(accountId: string): FileSystemData {

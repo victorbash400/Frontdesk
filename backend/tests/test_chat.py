@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from agents.agents import ToolEventRecorder
 from app import chat_stream
 from tools.time_tool import get_current_time
 
@@ -16,48 +15,48 @@ def test_time_tool_returns_requested_timezone() -> None:
     assert result["display"].endswith("EAT")
 
 
-def test_tool_event_recorder_reports_completion() -> None:
-    recorder = ToolEventRecorder()
-    recorder.after_tool_call(SimpleNamespace(
-        exception=None,
-        result={"status": "success"},
-        tool_use={"toolUseId": "time-1", "name": "get_current_time"},
-    ))
-    assert recorder.drain() == [{"id": "time-1", "name": "get_current_time", "status": "done"}]
-    assert recorder.drain() == []
+def test_stream_translates_adk_reasoning_and_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeSessions:
+        async def get_session(self, **_: object):
+            return None
 
+        async def create_session(self, **_: object):
+            return object()
 
-def test_stream_translates_strands_events(monkeypatch: pytest.MonkeyPatch) -> None:
-    class FakeAgent:
-        def __init__(self, recorder: ToolEventRecorder) -> None:
-            self.recorder = recorder
+    class FakeRunner:
+        app_name = "front_desk"
 
-        async def stream_async(self, _: str):
-            yield {"current_tool_use": {"toolUseId": "time-1", "name": "get_current_time", "input": {"timezone": "Africa/Nairobi"}}}
-            self.recorder.after_tool_call(SimpleNamespace(
-                exception=None,
-                result={"status": "success"},
-                tool_use={"toolUseId": "time-1", "name": "get_current_time"},
-            ))
-            yield {"start_event_loop": True}
-            yield {"data": "It is midnight."}
-
-    monkeypatch.setattr(chat_stream, "create_operator_agent", lambda _session_id, recorder: FakeAgent(recorder))
+        def run_async(self, **_: object):
+            async def events():
+                yield SimpleNamespace(
+                    error_message=None,
+                    partial=True,
+                    content=SimpleNamespace(parts=[SimpleNamespace(text="I will answer directly.", thought=True)]),
+                )
+                yield SimpleNamespace(
+                    error_message=None,
+                    partial=True,
+                    content=SimpleNamespace(parts=[SimpleNamespace(text="Hello **there**.", thought=False)]),
+                )
+            return events()
 
     async def fake_name_chat(_user: str, _assistant: str) -> str:
-        return "Current Nairobi Time"
+        return "Friendly Greeting"
 
+    monkeypatch.setattr(chat_stream, "sessions", FakeSessions())
+    monkeypatch.setattr(chat_stream, "runner", FakeRunner())
     monkeypatch.setattr(chat_stream, "name_chat", fake_name_chat)
+
     async def collect() -> list[str]:
         return [frame async for frame in chat_stream.stream_agent_events(
             account_id="account-1",
             chat_id="chat-1",
             client_id="client-1",
             create_title=True,
-            message="What time is it?",
+            message="Hello",
         )]
 
     frames = asyncio.run(collect())
     events = [json.loads(frame.removeprefix("data: ")) for frame in frames]
-    assert [event["type"] for event in events] == ["tool_call", "tool_response", "content", "title", "done"]
-    assert events[1]["status"] == "done"
+    assert [event["type"] for event in events] == ["reasoning", "content", "title", "done"]
+    assert events[1]["content"] == "Hello **there**."

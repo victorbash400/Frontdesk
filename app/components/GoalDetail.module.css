@@ -1,0 +1,13 @@
+.detail { display: grid; min-width: 0; padding: 2px 26px 17px 30px; }
+.detail header, .detail footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.detail header strong, .detail header small { display: block; }
+.detail header strong { font-size: 12px; font-weight: 590; }
+.detail header small { margin-top: 4px; color: #8d8d88; font-size: 10px; }
+.detail button { display: flex; height: 30px; padding: 0 11px; align-items: center; gap: 6px; border: 0; border-radius: 9px; background: #ececea; color: #343431; font-size: 11px; cursor: pointer; }
+.detail button.primary { background: #30302e; color: #fff; }
+.detail button:disabled { opacity: .35; cursor: default; }
+.detail button svg { width: 13px; height: 13px; }
+.detail textarea { min-height: 112px; margin-top: 18px; padding: 0; resize: none; border: 0; outline: 0; background: transparent; color: #30302e; font-family: inherit; font-size: 13px; line-height: 1.65; }
+.detail footer { min-height: 34px; margin-top: 12px; }
+.detail footer small { color: #92928d; font-size: 10px; }
+.detail footer small[role="alert"] { color: #a5322d; }

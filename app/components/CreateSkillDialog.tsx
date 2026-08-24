@@ -42,7 +42,7 @@ export function CreateSkillDialog({ open, onCancel, onSubmit }: CreateSkillDialo
       <form onSubmit={submit}>
         <h2>New Skill</h2>
         <label>Name<input aria-invalid={Boolean(error)} autoFocus onChange={(event) => { setName(event.target.value); setError(undefined); }} value={name} /></label>
-        <label>When should Operator use it?<input onChange={(event) => setDescription(event.target.value)} value={description} /></label>
+        <label>When should Front Desk use it?<input onChange={(event) => setDescription(event.target.value)} value={description} /></label>
         {error ? <p role="alert">{error}</p> : null}
         <footer><button onClick={onCancel} type="button">Cancel</button><button disabled={!name.trim()} type="submit">Create Skill</button></footer>
       </form>

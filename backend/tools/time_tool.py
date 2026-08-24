@@ -1,10 +1,6 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from strands import tool
-
-
-@tool
 def get_current_time(timezone: str = "Africa/Nairobi") -> dict[str, str]:
     """Get the exact current date and time in an IANA timezone.
 

@@ -45,7 +45,7 @@ export function CreateTaskDialog({ clients, open, onCancel, onSubmit }: CreateTa
       <form onSubmit={submit}>
         <h2>New Task</h2>
         <label>Client<select aria-label="Task client" onChange={(event) => setSelectedClientId(event.target.value)} value={selectedClientId}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
-        <label>Task<textarea aria-label="Task instructions" autoFocus onChange={(event) => setText(event.target.value)} placeholder="What should Operator do?" rows={6} value={text} /></label>
+        <label>Task<textarea aria-label="Task instructions" autoFocus onChange={(event) => setText(event.target.value)} placeholder="What should Front Desk do?" rows={6} value={text} /></label>
         {error ? <p role="alert">{error}</p> : null}
         <footer><button onClick={onCancel} type="button">Cancel</button><button disabled={!selectedClientId || !text.trim()} type="submit">Create Task</button></footer>
       </form>

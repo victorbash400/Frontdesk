@@ -1,1 +1,1 @@
-"""Operator backend package."""
+"""Front Desk backend package."""

@@ -2,7 +2,7 @@ import type { ClientChat, ClientChatMessage } from "../components/clientChatType
 import { accountStorageKey } from "./accountStorage";
 
 
-const storageNamespace = "operator-client-chats-v1";
+const storageNamespace = "front-desk-client-chats-v1";
 
 export function loadClientChats(accountId: string, clientId: string): ClientChat[] {
   const stored = window.localStorage.getItem(storageKey(accountId, clientId));

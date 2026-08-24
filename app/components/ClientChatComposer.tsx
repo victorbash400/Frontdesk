@@ -28,7 +28,7 @@ export function ClientChatComposer({ disabled, onSend }: ClientChatComposerProps
 
   return (
     <form className={styles.composer} onSubmit={submit}>
-      <textarea aria-label="Message Operator" disabled={disabled} onChange={(event) => setText(event.target.value)} onKeyDown={handleKeyDown} placeholder="Message Operator" rows={3} value={text} />
+      <textarea aria-label="Message Front Desk" disabled={disabled} onChange={(event) => setText(event.target.value)} onKeyDown={handleKeyDown} placeholder="Message Front Desk" rows={3} value={text} />
       <footer>
         <label aria-label="Attach files" title="Attach files">
           <Paperclip aria-hidden="true" />

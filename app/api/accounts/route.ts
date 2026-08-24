@@ -1,6 +1,6 @@
 export async function POST(request: Request) {
   const body = await request.json() as { email?: string; password?: string; name?: string };
-  const backendUrl = process.env.OPERATOR_BACKEND_URL || "http://127.0.0.1:8000";
+  const backendUrl = process.env.FRONT_DESK_BACKEND_URL || "http://127.0.0.1:8000";
   let response: Response;
   try {
     response = await fetch(`${backendUrl.replace(/\/$/, "")}/accounts`, {
@@ -9,7 +9,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({ email: body.email || "", password: body.password || "", name: body.name || "" }),
     });
   } catch {
-    return Response.json({ error: "Operator account service is unavailable" }, { status: 503 });
+    return Response.json({ error: "Front Desk account service is unavailable" }, { status: 503 });
   }
   const result = await response.json().catch(() => ({ detail: "Could not create account" })) as Record<string, unknown>;
   if (!response.ok) {

@@ -1,0 +1,7 @@
+.selector { min-width: 0; }
+.selector > header { margin-bottom: 9px; }
+.selector > header strong, .selector > header small { display: block; }
+.selector > header strong { color: #444440; font-size: 12px; font-weight: 590; }
+.selector > header small { margin-top: 4px; color: #999994; font-size: 10px; }
+.options { overflow: hidden; border: 1px solid #e3e3df; border-radius: 14px; background: #fff; }
+.options p { margin: 0; padding: 20px 12px; color: #999994; font-size: 10px; text-align: center; }

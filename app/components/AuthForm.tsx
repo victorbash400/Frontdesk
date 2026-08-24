@@ -40,7 +40,7 @@ export function AuthForm() {
       }
       const result = await signIn("credentials", { email: submittedEmail, password: submittedPassword, redirect: false });
       if (result?.error === "CredentialsSignin") throw new Error("Email or password is incorrect");
-      if (result?.error) throw new Error("Operator account service is unavailable");
+      if (result?.error) throw new Error("Front Desk account service is unavailable");
       router.replace("/");
       router.refresh();
     } catch (reason) {
@@ -65,7 +65,7 @@ export function AuthForm() {
 
   return (
     <main className={styles.page}>
-      <strong className={styles.brand}>Operator</strong>
+      <strong className={styles.brand}>Front Desk</strong>
       <section className={styles.shell}>
         <section className={styles.card}>
           <h1>{mode === "signin" ? "Sign in" : "Create account"}</h1>
@@ -73,7 +73,7 @@ export function AuthForm() {
             <button aria-pressed={mode === "signin"} onClick={() => chooseMode("signin")} type="button">Sign in</button>
             <button aria-pressed={mode === "create"} onClick={() => chooseMode("create")} type="button">Create account</button>
           </nav>
-          <form id="operator-auth-form" onSubmit={submit}>
+          <form id="front-desk-auth-form" onSubmit={submit}>
             <section className={styles.fields}>
               {mode === "create" ? <label>Name<input autoComplete="name" name="name" onChange={(event) => setName(event.target.value)} required value={name} /></label> : null}
               <label>Email<input autoComplete="username" name="email" onChange={(event) => setEmail(event.target.value)} required type="email" value={email} /></label>
@@ -84,7 +84,7 @@ export function AuthForm() {
             </section>
           </form>
         </section>
-        <button className={styles.submit} disabled={submitting} form="operator-auth-form" type="submit">{submitting ? "Working" : mode === "signin" ? "Sign in" : "Create account"}</button>
+        <button className={styles.submit} disabled={submitting} form="front-desk-auth-form" type="submit">{submitting ? "Working" : mode === "signin" ? "Sign in" : "Create account"}</button>
       </section>
     </main>
   );

@@ -1,4 +1,4 @@
-import { BookOpenCheck, Command, FileText, Folder, FolderPlus, ListTodo, Mail, Phone, Puzzle, Trash2, type LucideIcon } from "lucide-react";
+import { BookOpenCheck, Command, FileText, Folder, FolderPlus, ListTodo, Mail, Phone, Puzzle, Target, Trash2, type LucideIcon } from "lucide-react";
 
 import { locationLabels } from "../lib/fileSystemSelectors";
 import type { Destination, SmartLocation } from "../types/filesystem";
@@ -11,6 +11,7 @@ const clientItems: Array<{ location: SmartLocation; icon: LucideIcon }> = [
 
 const workspaceItems: Array<{ location: SmartLocation; icon: LucideIcon }> = [
   { location: "tasks", icon: ListTodo },
+  { location: "goals", icon: Target },
   { location: "calls", icon: Phone },
   { location: "emails", icon: Mail },
   { location: "documents", icon: FileText },
@@ -31,7 +32,7 @@ export function Sidebar({ account, destination, onCreateClient, onNavigate }: Si
     <aside className={styles.sidebar}>
       <header>
         <Command aria-hidden="true" />
-        <strong>Operator</strong>
+        <strong>Front Desk</strong>
         <AccountButton email={account.email} name={account.name} />
       </header>
       <nav aria-label="Filesystem locations">

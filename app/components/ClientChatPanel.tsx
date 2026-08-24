@@ -100,7 +100,7 @@ export function ClientChatPanel({ accountId, clientId, open }: ClientChatPanelPr
       });
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) {
-        const error = reason instanceof Error ? reason.message : "Operator chat failed";
+        const error = reason instanceof Error ? reason.message : "Front Desk chat failed";
         setChats((current) => current.map((chat) => chat.id === chatId ? { ...chat, messages: applyClientChatEvent(chat.messages, { type: "error", error }), updatedAt: Date.now() } : chat));
       }
     } finally {

@@ -12,14 +12,14 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     async authorize(credentials) {
       const email = typeof credentials.email === "string" ? credentials.email : "";
       const password = typeof credentials.password === "string" ? credentials.password : "";
-      const backendUrl = process.env.OPERATOR_BACKEND_URL || "http://127.0.0.1:8000";
+      const backendUrl = process.env.FRONT_DESK_BACKEND_URL || "http://127.0.0.1:8000";
       const response = await fetch(`${backendUrl.replace(/\/$/, "")}/accounts/authenticate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
       if (response.status === 401) return null;
-      if (!response.ok) throw new Error("Operator account service is unavailable");
+      if (!response.ok) throw new Error("Front Desk account service is unavailable");
       return response.json();
     },
   })],

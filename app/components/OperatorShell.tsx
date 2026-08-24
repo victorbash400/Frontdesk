@@ -17,6 +17,7 @@ import { PluginStore } from "./PluginStore";
 import { Sidebar } from "./Sidebar";
 import { SkillsLibrary } from "./SkillsLibrary";
 import { TasksWorkspace } from "./TasksWorkspace";
+import { GoalsWorkspace } from "./GoalsWorkspace";
 import { Toolbar } from "./Toolbar";
 import styles from "./OperatorShell.module.css";
 
@@ -54,7 +55,8 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
   const clients = useMemo(() => fileSystem.data.nodes.filter((node) => node.kind === "client" && !node.trashedAt), [fileSystem.data.nodes]);
   const canCreate = navigation.destination.type === "folder" || navigation.destination.type === "location" && navigation.destination.location === "clients";
   const taskView = navigation.destination.type === "location" && navigation.destination.location === "tasks";
-  const utilityView = Boolean(openProfile) || taskView || navigation.destination.type === "location" && (navigation.destination.location === "plugins" || navigation.destination.location === "skills");
+  const goalView = navigation.destination.type === "location" && navigation.destination.location === "goals";
+  const utilityView = Boolean(openProfile) || taskView || goalView || navigation.destination.type === "location" && (navigation.destination.location === "plugins" || navigation.destination.location === "skills");
 
   function navigate(destination: Parameters<typeof navigation.navigate>[0]) {
     navigation.navigate(destination);
@@ -137,6 +139,7 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
             {navigation.destination.type === "location" && navigation.destination.location === "plugins" ? <PluginStore accountId={account.id} /> : null}
             {navigation.destination.type === "location" && navigation.destination.location === "skills" ? <SkillsLibrary accountId={account.id} /> : null}
             {taskView ? <TasksWorkspace accountId={account.id} clients={clients} /> : null}
+            {goalView ? <GoalsWorkspace accountId={account.id} clients={clients} /> : null}
             {openProfile && client ? <ClientProfileEditor clientName={client.name} key={`${openProfile.id}-${openProfile.updatedAt}`} onBack={() => setOpenProfileId(undefined)} onSave={(content) => fileSystem.updateNode(openProfile.id, { content })} profile={openProfile} /> : null}
             {!utilityView ? <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} onRename={(node) => setDialog({ mode: "rename", node })} onTrashToggle={(node) => { fileSystem.setTrashed(node.id, !node.trashedAt); setSelectedId(undefined); }} selectedNode={selectedNode} viewMode={viewMode} /> : null}
           </section>

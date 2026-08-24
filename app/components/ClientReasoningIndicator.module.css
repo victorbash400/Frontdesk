@@ -1,0 +1,22 @@
+.reasoning {
+  color: #73736f;
+  font-size: 12px;
+}
+
+.reasoning summary {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.reasoning summary::-webkit-details-marker { display: none; }
+
+.reasoning p {
+  margin: 8px 0 0 20px;
+  color: #8a8a86;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}

@@ -4,8 +4,8 @@ from tempfile import TemporaryDirectory
 from fastapi.testclient import TestClient
 
 test_directory = TemporaryDirectory()
-os.environ["OPERATOR_DATABASE_URL"] = f"sqlite:///{test_directory.name}/operator.db"
-os.environ["OPERATOR_INTERNAL_SECRET"] = "test-internal-secret"
+os.environ["FRONT_DESK_DATABASE_URL"] = f"sqlite:///{test_directory.name}/front-desk.db"
+os.environ["FRONT_DESK_INTERNAL_SECRET"] = "test-internal-secret"
 
 from app.main import app
 
@@ -57,7 +57,7 @@ def test_accounts_and_workspaces_are_isolated() -> None:
 
 def test_demo_account_is_available() -> None:
     with TestClient(app) as client:
-        response = client.post("/accounts/authenticate", json={"email": "demo@operator.local", "password": "operator-demo"})
+        response = client.post("/accounts/authenticate", json={"email": "demo@front-desk.local", "password": "front-desk-demo"})
         assert response.status_code == 200
         assert response.json()["name"] == "Demo"
 
@@ -69,4 +69,4 @@ def create_account(client: TestClient, email: str, name: str) -> dict[str, str]:
 
 
 def account_headers(account_id: str) -> dict[str, str]:
-    return {"X-Operator-Account": account_id, "X-Operator-Internal-Secret": "test-internal-secret"}
+    return {"X-Front-Desk-Account": account_id, "X-Front-Desk-Internal-Secret": "test-internal-secret"}

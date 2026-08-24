@@ -18,8 +18,8 @@ export async function streamClientChat(options: StreamClientChatOptions) {
     signal: options.signal,
   });
   if (!response.ok || !response.body) {
-    const body = await response.json().catch(() => ({ error: "Operator chat failed" })) as { error?: string };
-    throw new Error(body.error || "Operator chat failed");
+    const body = await response.json().catch(() => ({ error: "Front Desk chat failed" })) as { error?: string };
+    throw new Error(body.error || "Front Desk chat failed");
   }
 
   const reader = response.body.getReader();

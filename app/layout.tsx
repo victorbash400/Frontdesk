@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Operator",
-  description: "Operator",
+  title: "Front Desk",
+  description: "Front Desk",
 };
 
 type RootLayoutProps = {

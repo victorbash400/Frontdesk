@@ -10,7 +10,7 @@ def artifact_key(workspace_id: str, client_id: str, filename: str) -> str:
     return f"workspaces/{workspace_id}/clients/{client_id}/artifacts/{uuid4()}/{safe_name}"
 
 
-def require_s3_bucket(settings: Settings) -> str:
-    if not settings.s3_bucket:
-        raise RuntimeError("OPERATOR_S3_BUCKET is required for artifact storage.")
-    return settings.s3_bucket
+def require_gcs_bucket(settings: Settings) -> str:
+    if not settings.gcs_bucket:
+        raise RuntimeError("FRONT_DESK_GCS_BUCKET is required for artifact storage.")
+    return settings.gcs_bucket

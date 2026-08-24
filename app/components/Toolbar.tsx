@@ -79,7 +79,7 @@ export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, has
         </span>
         <label className={styles.search}>
           <Search aria-hidden="true" />
-          <input aria-label="Search Operator" onChange={(event) => onQueryChange(event.target.value)} placeholder="Search" type="search" value={query} />
+          <input aria-label="Search Front Desk" onChange={(event) => onQueryChange(event.target.value)} placeholder="Search" type="search" value={query} />
         </label>
       </nav> : null}
     </header>

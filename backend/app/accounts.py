@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 from .models import Account, Workspace
 
 
-DEMO_EMAIL = "demo@operator.local"
-DEMO_PASSWORD = "operator-demo"
+DEMO_EMAIL = "demo@front-desk.local"
+DEMO_PASSWORD = "front-desk-demo"
 EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
@@ -26,7 +26,7 @@ def create_account(session: Session, email_input: str, password: str, name_input
     session.add(account)
     try:
         session.flush()
-        session.add(Workspace(owner_id=account.id, name="Operator"))
+        session.add(Workspace(owner_id=account.id, name="Front Desk"))
         session.commit()
     except IntegrityError as error:
         session.rollback()

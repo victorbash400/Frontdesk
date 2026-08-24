@@ -76,6 +76,7 @@ export const locationLabels: Record<SmartLocation, string> = {
   clients: "Clients",
   "needs-you": "Needs You",
   tasks: "Tasks",
+  goals: "Goals",
   calls: "Calls",
   emails: "Emails",
   documents: "Documents",

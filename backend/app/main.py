@@ -1,15 +1,18 @@
 from contextlib import asynccontextmanager
+import html
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from starlette.responses import StreamingResponse
+from starlette.responses import HTMLResponse, StreamingResponse
 
 from .accounts import authenticate_account, create_account, ensure_demo_account
 from .auth import require_account_id
 from .chat_stream import stream_agent_events
 from .config import get_settings
 from .database import SessionLocal, get_session, initialize_database
+from .google_oauth import begin_connection, connection_status, disconnect, finish_connection
 from .repository import create_node, list_nodes, search_nodes, set_trashed, update_node
 from .schemas import AccountCreate, AccountCredentials, AccountRead, ChatRequest, HealthRead, NodeCreate, NodeRead, NodeUpdate
 
@@ -22,14 +25,14 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Operator API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Front Desk API", version="0.1.0", lifespan=lifespan)
 settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH"],
-    allow_headers=["Content-Type", "Authorization", "X-Operator-Account", "X-Operator-Internal-Secret"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Content-Type", "Authorization", "X-Front-Desk-Account", "X-Front-Desk-Internal-Secret"],
 )
 
 
@@ -65,6 +68,42 @@ def chat_stream(body: ChatRequest, account_id: str = Depends(require_account_id)
         create_title=body.create_title,
     )
     return StreamingResponse(events, media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/plugins/google")
+def get_google_connection(account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    return connection_status(session, account_id)
+
+
+@app.post("/api/plugins/google/start")
+def start_google_connection(account_id: str = Depends(require_account_id)) -> dict[str, str]:
+    try:
+        return {"authorization_url": begin_connection(account_id)}
+    except RuntimeError as error:
+        raise HTTPException(503, str(error)) from error
+
+
+@app.delete("/api/plugins/google")
+def delete_google_connection(account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, bool]:
+    disconnect(session, account_id)
+    return {"connected": False}
+
+
+@app.get("/oauth/google/callback", response_class=HTMLResponse)
+async def google_callback(state: str, code: str | None = None, error: str | None = None, session: Session = Depends(get_session)) -> HTMLResponse:
+    if error or not code:
+        return HTMLResponse("<h2>Front Desk was not connected.</h2><p>You can close this window.</p>", status_code=400)
+    try:
+        email = await finish_connection(session, state, code)
+    except (ValueError, RuntimeError, httpx.HTTPError) as connection_error:
+        return HTMLResponse(
+            f"<h2>Front Desk was not connected.</h2><p>{html.escape(str(connection_error))}</p>",
+            status_code=400,
+        )
+    return HTMLResponse(
+        f"<h2>Front Desk is connected.</h2><p>{html.escape(email)}</p>"
+        "<script>window.opener?.postMessage({type:'front-desk-google-connected'}, '*');window.close()</script>"
+    )
 
 
 @app.get("/api/nodes", response_model=list[NodeRead])

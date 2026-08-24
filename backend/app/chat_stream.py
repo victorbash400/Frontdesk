@@ -3,9 +3,16 @@ import hashlib
 import json
 from collections.abc import AsyncIterator
 
-from agents.agents import ToolEventRecorder, create_operator_agent, name_chat
+from google.adk.agents.run_config import RunConfig, StreamingMode
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types
+
+from agents.agents import create_front_desk_app, name_chat
 
 
+sessions = InMemorySessionService()
+runner = Runner(app=create_front_desk_app(), session_service=sessions)
 _session_locks: dict[str, asyncio.Lock] = {}
 
 
@@ -13,35 +20,42 @@ async def stream_agent_events(*, account_id: str, client_id: str, chat_id: str, 
     session_id = session_key(account_id, client_id, chat_id)
     lock = _session_locks.setdefault(session_id, asyncio.Lock())
     async with lock:
-        tool_events = ToolEventRecorder()
-        agent = create_operator_agent(session_id, tool_events)
-        assistant_text = ""
-        tool_names: dict[str, str] = {}
         try:
-            async for event in agent.stream_async(message):
-                for completed in tool_events.drain():
-                    yield sse({"type": "tool_response", **completed})
-                content = event.get("data")
-                if isinstance(content, str) and content:
-                    assistant_text += content
-                    yield sse({"type": "content", "content": content})
+            existing = await sessions.get_session(
+                app_name=runner.app_name,
+                user_id=account_id,
+                session_id=session_id,
+            )
+            if not existing:
+                await sessions.create_session(
+                    app_name=runner.app_name,
+                    user_id=account_id,
+                    session_id=session_id,
+                )
 
-                tool_use = event.get("current_tool_use")
-                if isinstance(tool_use, dict):
-                    tool_id = str(tool_use.get("toolUseId") or "")
-                    tool_name = str(tool_use.get("name") or "")
-                    if tool_id and tool_name and tool_id not in tool_names:
-                        tool_names[tool_id] = tool_name
-                        tool_input = tool_use.get("input")
-                        yield sse({
-                            "type": "tool_call",
-                            "id": tool_id,
-                            "name": tool_name,
-                            "args": tool_input if isinstance(tool_input, dict) else {},
-                        })
+            assistant_text = ""
+            event_stream = runner.run_async(
+                user_id=account_id,
+                session_id=session_id,
+                new_message=types.Content(role="user", parts=[types.Part.from_text(text=message)]),
+                run_config=RunConfig(streaming_mode=StreamingMode.SSE),
+            )
+            async for event in event_stream:
+                if event.error_message:
+                    yield sse({"type": "error", "error": event.error_message})
+                    continue
+                if not event.partial or not event.content:
+                    continue
+                for part in event.content.parts or []:
+                    if not part.text:
+                        continue
+                    if not part.thought:
+                        assistant_text += part.text
+                    yield sse({
+                        "type": "reasoning" if part.thought else "content",
+                        "content": part.text,
+                    })
 
-            for completed in tool_events.drain():
-                yield sse({"type": "tool_response", **completed})
             if create_title and assistant_text.strip():
                 yield sse({"type": "title", "title": await name_chat(message, assistant_text)})
             yield sse({"type": "done"})
@@ -50,8 +64,7 @@ async def stream_agent_events(*, account_id: str, client_id: str, chat_id: str, 
 
 
 def session_key(account_id: str, client_id: str, chat_id: str) -> str:
-    value = f"{account_id}:{client_id}:{chat_id}".encode()
-    return hashlib.sha256(value).hexdigest()
+    return hashlib.sha256(f"{account_id}:{client_id}:{chat_id}".encode()).hexdigest()
 
 
 def sse(event: dict[str, object]) -> str:

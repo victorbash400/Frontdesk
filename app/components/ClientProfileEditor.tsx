@@ -38,7 +38,7 @@ export function ClientProfileEditor({ clientName, profile, onBack, onSave }: Cli
         <h1>Client Profile</h1>
         <p>{clientName}</p>
         <label htmlFor="client-profile-content">Profile</label>
-        <textarea aria-label="Client profile text" autoFocus id="client-profile-content" onChange={(event) => { setContent(event.target.value); setError(undefined); }} placeholder="Add the client context Operator should know." spellCheck="true" value={content} />
+        <textarea aria-label="Client profile text" autoFocus id="client-profile-content" onChange={(event) => { setContent(event.target.value); setError(undefined); }} placeholder="Add the client context Front Desk should know." spellCheck="true" value={content} />
         {error ? <small role="alert">{error}</small> : null}
       </article>
     </section>

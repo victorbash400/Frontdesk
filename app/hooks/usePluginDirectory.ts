@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { accountStorageKey } from "../lib/accountStorage";
 
-const storageNamespace = "operator-plugin-directory-v1";
+const storageNamespace = "front-desk-plugin-directory-v1";
 
 export function usePluginDirectory(accountId: string) {
   const [enabledIds, setEnabledIds] = useState<Set<string>>(new Set());

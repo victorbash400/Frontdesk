@@ -10,8 +10,8 @@ from .models import Account
 
 
 def require_account_id(
-    account_id: Annotated[str | None, Header(alias="X-Operator-Account")] = None,
-    internal_secret: Annotated[str | None, Header(alias="X-Operator-Internal-Secret")] = None,
+    account_id: Annotated[str | None, Header(alias="X-Front-Desk-Account")] = None,
+    internal_secret: Annotated[str | None, Header(alias="X-Front-Desk-Internal-Secret")] = None,
     session: Session = Depends(get_session),
 ) -> str:
     expected_secret = get_settings().internal_secret
