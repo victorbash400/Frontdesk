@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "backend": "backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000",
+    "backend:test": "cd backend && .venv/bin/python -m pytest tests -q",
     "build": "next build",
     "start": "next start",
     "lint": "eslint ."

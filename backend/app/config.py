@@ -9,9 +9,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
     database_url: str = f"sqlite:///{PROJECT_ROOT / 'backend' / 'front-desk.db'}"
+    agent_session_database_url: str = f"sqlite+aiosqlite:///{PROJECT_ROOT / 'backend' / 'front-desk-sessions.db'}"
     google_cloud_project: str = "front-desk-20260824"
     google_cloud_location: str = "global"
-    gemini_model: str = "gemini-3.1-pro-preview"
+    gemini_model: str = "gemini-3.6-flash"
     gemini_title_model: str = "gemini-3-flash-preview"
     google_client_id: str = ""
     google_client_secret: str = ""

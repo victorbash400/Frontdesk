@@ -8,3 +8,5 @@ pytest
 google-adk
 google-cloud-aiplatform
 cryptography
+aiosqlite
+greenlet

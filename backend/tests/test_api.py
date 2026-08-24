@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 test_directory = TemporaryDirectory()
 os.environ["FRONT_DESK_DATABASE_URL"] = f"sqlite:///{test_directory.name}/front-desk.db"
+os.environ["FRONT_DESK_AGENT_SESSION_DATABASE_URL"] = f"sqlite+aiosqlite:///{test_directory.name}/front-desk-sessions.db"
 os.environ["FRONT_DESK_INTERNAL_SECRET"] = "test-internal-secret"
 
 from app.main import app

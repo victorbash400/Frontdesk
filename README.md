@@ -6,7 +6,8 @@ Front Desk is a client-work workspace with direct Gemini chat, visible model rea
 
 - Next.js 16, React 19, Auth.js, and CSS Modules
 - FastAPI, SQLAlchemy, and SQLite/PostgreSQL-compatible account storage
-- Google ADK with `gemini-3.1-pro-preview` on Vertex AI
+- Persistent account/chat-scoped ADK sessions through `DatabaseSessionService`
+- Google ADK with `gemini-3.6-flash` on Vertex AI
 - Server-sent events for chat streaming; no polling
 - Google Cloud Storage for future client artifacts
 - Account-scoped Google Workspace OAuth foundation
@@ -17,7 +18,7 @@ Front Desk is a client-work workspace with direct Gemini chat, visible model rea
 2. Run `pnpm install`.
 3. Create `backend/.venv` and install `backend/requirements.txt`.
 4. Authenticate Application Default Credentials and set `front-desk-20260824` as the quota project.
-5. Start the backend and frontend separately when you are ready to run the app.
+5. Run `pnpm backend` and `pnpm dev` in separate terminals when you are ready to run the app.
 
 The demo account is `demo@front-desk.local` with password `front-desk-demo`.
 
