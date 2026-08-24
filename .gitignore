@@ -12,6 +12,7 @@ out/
 # Python
 backend/.venv/
 backend/.env
+backend/client_secret_*.json
 backend/*.db
 backend/.sessions/
 __pycache__/

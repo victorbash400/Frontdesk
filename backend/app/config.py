@@ -1,3 +1,4 @@
+import json
 from functools import lru_cache
 from pathlib import Path
 
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     google_cloud_location: str = "global"
     gemini_model: str = "gemini-3.6-flash"
     gemini_title_model: str = "gemini-3-flash-preview"
+    google_client_credentials_file: str = ""
     google_client_id: str = ""
     google_client_secret: str = ""
     gcs_bucket: str = ""
@@ -29,6 +31,24 @@ class Settings(BaseSettings):
     @property
     def allowed_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def google_oauth_credentials(self) -> tuple[str, str]:
+        if self.google_client_credentials_file:
+            credentials_path = Path(self.google_client_credentials_file).expanduser()
+            try:
+                payload = json.loads(credentials_path.read_text())
+                web_credentials = payload["web"]
+                client_id = web_credentials["client_id"]
+                client_secret = web_credentials["client_secret"]
+                if not isinstance(client_id, str) or not client_id or not isinstance(client_secret, str) or not client_secret:
+                    raise ValueError("Google OAuth credentials are empty.")
+                return client_id, client_secret
+            except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+                raise RuntimeError(
+                    f"Google OAuth credentials could not be loaded from {credentials_path}."
+                ) from error
+        return self.google_client_id, self.google_client_secret
 
 
 @lru_cache

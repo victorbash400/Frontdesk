@@ -51,12 +51,13 @@ def decrypt_refresh_token(connection: OAuthConnection) -> str:
 
 def connection_status(session: Session, account_id: str) -> dict[str, object]:
     settings = get_settings()
+    client_id, client_secret = settings.google_oauth_credentials
     connection = session.scalar(select(OAuthConnection).where(
         OAuthConnection.account_id == account_id,
         OAuthConnection.provider == "google_workspace",
     ))
     return {
-        "configured": bool(settings.google_client_id and settings.google_client_secret),
+        "configured": bool(client_id and client_secret),
         "connected": connection is not None,
         "email": connection.email if connection else None,
     }
@@ -64,12 +65,13 @@ def connection_status(session: Session, account_id: str) -> dict[str, object]:
 
 def begin_connection(account_id: str) -> str:
     settings = get_settings()
-    if not settings.google_client_id or not settings.google_client_secret:
+    client_id, client_secret = settings.google_oauth_credentials
+    if not client_id or not client_secret:
         raise RuntimeError("Google Workspace OAuth is not configured.")
     state = secrets.token_urlsafe(32)
     pending_connections[state] = PendingConnection(account_id=account_id)
     return AUTH_URL + "?" + urlencode({
-        "client_id": settings.google_client_id,
+        "client_id": client_id,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
         "scope": " ".join(SCOPES),
@@ -85,10 +87,11 @@ async def finish_connection(session: Session, state: str, code: str) -> str:
     if not pending:
         raise ValueError("The Google connection request expired or is invalid.")
     settings = get_settings()
+    client_id, client_secret = settings.google_oauth_credentials
     async with httpx.AsyncClient(timeout=20) as client:
         token_response = await client.post(TOKEN_URL, data={
-            "client_id": settings.google_client_id,
-            "client_secret": settings.google_client_secret,
+            "client_id": client_id,
+            "client_secret": client_secret,
             "code": code,
             "grant_type": "authorization_code",
             "redirect_uri": REDIRECT_URI,
