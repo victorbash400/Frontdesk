@@ -6,14 +6,14 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from starlette.responses import HTMLResponse, StreamingResponse
+from starlette.responses import HTMLResponse, Response, StreamingResponse
 
 from .accounts import authenticate_account, create_account, ensure_demo_account
 from .auth import require_account_id
 from .chat_stream import stream_agent_events
 from .config import get_settings
 from .database import SessionLocal, get_session, initialize_database
-from .google_oauth import begin_connection, connection_status, disconnect, finish_connection, set_workspace_permission
+from .google_oauth import begin_connection, connection_status, disconnect, finish_connection, profile_photo, set_workspace_permission
 from .mcp_oauth import begin_connection as begin_mcp_connection
 from .mcp_oauth import connection_support, disconnect as disconnect_mcp, finish_connection as finish_mcp_connection
 from .plugin_service import install_plugin, plugin_snapshot, uninstall_plugin
@@ -77,6 +77,17 @@ def chat_stream(body: ChatRequest, account_id: str = Depends(require_account_id)
 @app.get("/api/plugins/google")
 def get_google_connection(account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
     return connection_status(session, account_id)
+
+
+@app.get("/api/plugins/google/avatar")
+async def get_google_avatar(account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> Response:
+    try:
+        content, content_type = await profile_photo(session, account_id)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+    except httpx.HTTPError as error:
+        raise HTTPException(502, "Google profile photo could not be loaded.") from error
+    return Response(content=content, media_type=content_type, headers={"Cache-Control": "private, max-age=3600"})
 
 
 @app.post("/api/plugins/google/start")

@@ -11,6 +11,7 @@ type ConnectionState = {
   missing_scopes: string[];
   email?: string | null;
   name?: string | null;
+  picture?: string | null;
   permissions: WorkspacePermission[];
 };
 

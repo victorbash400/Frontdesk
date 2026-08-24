@@ -31,10 +31,12 @@ export function WorkspaceSection({ accountId, onRemove }: { accountId: string; o
         configured={workspace.configured}
         connected={workspace.connected}
         email={workspace.email}
+        name={workspace.name}
         needsReconnect={workspace.needs_reconnect}
         onConnect={() => run(workspace.connect())}
         onDisconnect={() => run(workspace.disconnect())}
         onEmailVisibilityChange={changeEmailVisibility}
+        picture={workspace.picture}
         showEmail={showEmail}
       />
       <WorkspacePermissions connected={workspace.connected} onChange={(permissionId, enabled) => run(workspace.setPermission(permissionId, enabled))} permissions={workspace.permissions} />

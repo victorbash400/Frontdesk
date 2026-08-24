@@ -2,7 +2,7 @@ import base64
 import hashlib
 import secrets
 from dataclasses import dataclass
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
 from sqlalchemy import select
@@ -84,11 +84,30 @@ def connection_status(session: Session, account_id: str) -> dict[str, object]:
         "missing_scopes": missing_scopes,
         "email": connection.email if connection else None,
         "name": connection.profile_name if connection else None,
+        "picture": "/api/plugins/google/avatar" if connection and connection.picture_url else None,
         "permissions": [
             {"id": permission_id, "name": name, "description": description, "enabled": permission_rows.get(permission_id, True)}
             for permission_id, name, description in WORKSPACE_PERMISSIONS
         ],
     }
+
+
+async def profile_photo(session: Session, account_id: str) -> tuple[bytes, str]:
+    connection = session.scalar(select(OAuthConnection).where(
+        OAuthConnection.account_id == account_id,
+        OAuthConnection.provider == "google_workspace",
+    ))
+    picture = connection.picture_url if connection else None
+    hostname = urlparse(picture).hostname if picture else None
+    if not hostname or not hostname.endswith(".googleusercontent.com"):
+        raise ValueError("Google profile photo is unavailable.")
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+        response = await client.get(picture)
+        response.raise_for_status()
+    content_type = response.headers.get("content-type", "")
+    if not content_type.startswith("image/"):
+        raise ValueError("Google returned an invalid profile photo.")
+    return response.content, content_type
 
 
 def begin_connection(account_id: str) -> str:
