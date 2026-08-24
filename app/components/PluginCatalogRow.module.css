@@ -1,0 +1,8 @@
+.row { position: relative; display: grid; min-height: 68px; padding: 0 10px; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 11px; }
+.row span { min-width: 0; }
+.row strong, .row small { display: block; }
+.row strong { color: #333330; font-size: 12px; font-weight: 580; }
+.row small { margin-top: 4px; overflow: hidden; color: #92928e; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.row button { height: 28px; padding: 0 10px; border: 1px solid #dededb; border-radius: 8px; background: #fff; color: #3e3e3b; font-size: 10px; cursor: pointer; }
+.row button:hover { border-color: #c9c9c5; background: #fafaf8; }
+.row p { position: absolute; inset: auto 10px 1px 55px; margin: 0; overflow: hidden; color: #a27b58; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }

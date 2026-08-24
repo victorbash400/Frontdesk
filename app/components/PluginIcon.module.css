@@ -1,0 +1,2 @@
+.icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border: 1px solid #e4e4e0; border-radius: 10px; color: var(--plugin-color); background: #fff; }
+.icon svg { width: 18px; height: 18px; stroke-width: 1.75; }

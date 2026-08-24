@@ -1,0 +1,7 @@
+.section { margin-top: 28px; }
+.group + .group { margin-top: 24px; }
+.group h3 { margin: 0 0 7px; color: #5c5c58; font-size: 11px; font-weight: 580; text-transform: none; }
+.group > div { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; border-top: 1px solid #e7e7e3; }
+.group > div > article:nth-child(n+3) { border-top: 1px solid #ededeb; }
+.empty { margin: 30px 0; color: #93938f; font-size: 11px; }
+@media (max-width: 680px) { .group > div { grid-template-columns: 1fr; } .group > div > article + article { border-top: 1px solid #ededeb; } }

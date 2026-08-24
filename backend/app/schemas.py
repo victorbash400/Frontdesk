@@ -31,6 +31,10 @@ class ChatRequest(BaseModel):
     create_title: bool = False
 
 
+class PermissionUpdate(BaseModel):
+    enabled: bool
+
+
 class NodeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     kind: NodeKind

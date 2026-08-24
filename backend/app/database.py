@@ -26,6 +26,13 @@ def initialize_database() -> None:
     if "workspaces" in inspector.get_table_names() and "owner_id" not in {column["name"] for column in inspector.get_columns("workspaces")}:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE workspaces ADD COLUMN owner_id VARCHAR(36)"))
+    if "oauth_connections" in inspector.get_table_names():
+        oauth_columns = {column["name"] for column in inspector.get_columns("oauth_connections")}
+        with engine.begin() as connection:
+            if "profile_name" not in oauth_columns:
+                connection.execute(text("ALTER TABLE oauth_connections ADD COLUMN profile_name VARCHAR(255)"))
+            if "picture_url" not in oauth_columns:
+                connection.execute(text("ALTER TABLE oauth_connections ADD COLUMN picture_url TEXT"))
     Base.metadata.create_all(bind=engine)
     if engine.dialect.name == "sqlite":
         with engine.begin() as connection:

@@ -1,53 +1,59 @@
 import type { LucideIcon } from "lucide-react";
-import { Blocks, CalendarDays, Cloud, Database, FileText, GitBranch, HardDrive, Mail, MessageCircle, Search, Webhook, Workflow } from "lucide-react";
+import { Blocks, Bot, Braces, Building2, CircleDot, FileText, GitBranch, MessageCircle, Search } from "lucide-react";
 
-export type PluginCategory = "plugins" | "apps" | "mcps";
+
+export type PluginGroup = "built-in" | "featured" | "productivity" | "developer" | "communication";
 
 export type PluginDefinition = {
   id: string;
   name: string;
   description: string;
-  category: PluginCategory;
+  group: PluginGroup;
   color: string;
   icon: LucideIcon;
+  permissions: string[];
+};
+
+export type PluginState = {
+  id: string;
+  installed: boolean;
+  connected: boolean;
+  built_in: boolean;
+  connection_supported: boolean;
+  setup_message?: string | null;
+  account_label?: string | null;
+  tool_count: number;
 };
 
 export const pluginDirectory: PluginDefinition[] = [
-  { id: "gmail", name: "Gmail", description: "Read, organize, and draft client email", category: "apps", color: "#d94b45", icon: Mail },
-  { id: "google-drive", name: "Google Drive", description: "Work with client files across Drive", category: "apps", color: "#2d78d4", icon: HardDrive },
-  { id: "slack", name: "Slack", description: "Follow client channels and conversations", category: "apps", color: "#7b4ca0", icon: MessageCircle },
-  { id: "calendar", name: "Google Calendar", description: "Schedule meetings and track commitments", category: "apps", color: "#3d7ddd", icon: CalendarDays },
-  { id: "notion", name: "Notion", description: "Search and update shared workspaces", category: "plugins", color: "#333330", icon: FileText },
-  { id: "hubspot", name: "HubSpot", description: "Manage contacts, companies, and deals", category: "plugins", color: "#e56c3d", icon: Database },
-  { id: "salesforce", name: "Salesforce", description: "Connect client records and activity", category: "plugins", color: "#278acb", icon: Cloud },
-  { id: "github", name: "GitHub", description: "Read repositories, issues, and pull requests", category: "plugins", color: "#343431", icon: GitBranch },
-  { id: "web-search", name: "Web Search", description: "Research current information on the web", category: "plugins", color: "#3279cf", icon: Search },
-  { id: "dropbox", name: "Dropbox", description: "Open and organize shared client files", category: "plugins", color: "#2877df", icon: HardDrive },
-  { id: "asana", name: "Asana", description: "Track client projects and assigned work", category: "plugins", color: "#d75a68", icon: Workflow },
-  { id: "airtable", name: "Airtable", description: "Read and update structured client records", category: "plugins", color: "#e4a52c", icon: Database },
-  { id: "linear", name: "Linear", description: "Follow product issues and project cycles", category: "plugins", color: "#675bd3", icon: Blocks },
-  { id: "zoom", name: "Zoom", description: "Access scheduled client meetings", category: "plugins", color: "#3976e9", icon: CalendarDays },
-  { id: "client-data", name: "Client Data MCP", description: "Connect approved client data sources", category: "mcps", color: "#2e8c78", icon: Blocks },
-  { id: "webhooks", name: "Webhook MCP", description: "Receive signed events from external tools", category: "mcps", color: "#9765bb", icon: Webhook },
-  { id: "workflows", name: "Workflow MCP", description: "Run approved multi-step client workflows", category: "mcps", color: "#bc7348", icon: Workflow },
+  { id: "code", name: "Code", description: "Work with source code and project files", group: "built-in", color: "#4b63a8", icon: Braces, permissions: ["Read project files", "Create and update approved code"] },
+  { id: "web-search", name: "Web Search", description: "Research current information on the web", group: "built-in", color: "#3279cf", icon: Search, permissions: ["Search the public web", "Open and read search results"] },
+  { id: "github", name: "GitHub", description: "Work with repositories, issues, and pull requests", group: "featured", color: "#343431", icon: GitBranch, permissions: ["Read authorized repositories", "Create approved issues, comments, and pull requests"] },
+  { id: "notion", name: "Notion", description: "Search and update connected Notion workspaces", group: "featured", color: "#333330", icon: FileText, permissions: ["Search authorized pages", "Create and update workspace content"] },
+  { id: "linear", name: "Linear", description: "Plan projects and manage issues", group: "productivity", color: "#675bd3", icon: CircleDot, permissions: ["Read projects and issues", "Create and update approved work"] },
+  { id: "atlassian", name: "Atlassian", description: "Work across Jira and Confluence", group: "productivity", color: "#1769e0", icon: Building2, permissions: ["Read Jira and Confluence work", "Create approved issues, pages, and comments"] },
+  { id: "vercel", name: "Vercel", description: "Inspect projects, deployments, and logs", group: "developer", color: "#252523", icon: Bot, permissions: ["Read authorized projects", "Inspect deployments and runtime logs"] },
+  { id: "slack", name: "Slack", description: "Search channels and work with messages", group: "communication", color: "#7b4ca0", icon: MessageCircle, permissions: ["Search approved Slack content", "Draft and send approved messages"] },
 ];
 
-export const pluginPermissions: Record<string, string[]> = {
-  gmail: ["Read client email", "Create drafts and organize messages"],
-  "google-drive": ["Read selected files", "Create and update shared documents"],
-  slack: ["Read selected channels", "Draft and send approved messages"],
-  calendar: ["Read calendars", "Create and update approved events"],
-  notion: ["Read selected workspaces", "Create and update pages"],
-  hubspot: ["Read contacts and companies", "Update approved CRM records"],
-  salesforce: ["Read client records", "Update approved activity"],
-  github: ["Read repositories and issues", "Create approved issues and comments"],
-  "web-search": ["Search the public web", "Open and read search results"],
-  dropbox: ["Read selected folders", "Create and update shared files"],
-  asana: ["Read projects and tasks", "Create and update assigned work"],
-  airtable: ["Read selected bases", "Create and update records"],
-  linear: ["Read teams and issues", "Create and update approved issues"],
-  zoom: ["Read scheduled meetings", "Access approved meeting details"],
-  "client-data": ["Read approved client sources", "Use data inside client tasks"],
-  webhooks: ["Receive signed external events", "Attach events to the correct client"],
-  workflows: ["Run approved workflows", "Read workflow results"],
+export const pluginGroups: Array<{ id: PluginGroup; label: string }> = [
+  { id: "built-in", label: "Built in" },
+  { id: "featured", label: "Featured" },
+  { id: "productivity", label: "Productivity" },
+  { id: "developer", label: "Developer Tools" },
+  { id: "communication", label: "Communication" },
+];
+
+export const googleWorkspacePlugin: PluginDefinition = {
+  id: "google-workspace",
+  name: "Google Workspace",
+  description: "Gmail, Drive, Calendar, Docs, Sheets, and more",
+  group: "featured",
+  color: "#4285f4",
+  icon: Blocks,
+  permissions: ["Use the Workspace services you allow", "Keep access connected with an offline token"],
 };
+
+export function pluginById(pluginId: string) {
+  return pluginDirectory.find((plugin) => plugin.id === pluginId);
+}

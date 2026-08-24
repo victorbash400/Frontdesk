@@ -4,9 +4,10 @@ import { ListFilter, Plus, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useGoals } from "../hooks/useGoals";
+import { useGoogleWorkspaceConnection } from "../hooks/useGoogleWorkspaceConnection";
 import { usePluginDirectory } from "../hooks/usePluginDirectory";
 import { useSkillsLibrary } from "../hooks/useSkillsLibrary";
-import { pluginDirectory } from "../lib/pluginDirectory";
+import { googleWorkspacePlugin, pluginDirectory } from "../lib/pluginDirectory";
 import type { FileSystemNode } from "../types/filesystem";
 import type { GoalStatus } from "../types/goal";
 import { CreateGoalDialog } from "./CreateGoalDialog";
@@ -30,6 +31,7 @@ const filters: Array<{ id: StatusFilter; label: string }> = [
 
 export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
   const { createGoal, error, goals, loaded, setGoalStatus, updateGoal } = useGoals(accountId);
+  const googleWorkspace = useGoogleWorkspaceConnection();
   const plugins = usePluginDirectory(accountId);
   const skills = useSkillsLibrary(accountId);
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -38,8 +40,11 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
   const [sort, setSort] = useState<SortMode>("newest");
   const [creating, setCreating] = useState(false);
   const effectiveClientId = selectedClientId === "all" ? undefined : selectedClientId;
-  const availablePlugins = useMemo(() => pluginDirectory.filter((plugin) => plugins.enabledIds.has(plugin.id)), [plugins.enabledIds]);
-  const workspaceError = error ?? plugins.error ?? skills.error;
+  const availablePlugins = useMemo(() => [
+    ...pluginDirectory.filter((plugin) => plugins.enabledIds.has(plugin.id)),
+    ...(googleWorkspace.connected ? [googleWorkspacePlugin] : []),
+  ], [googleWorkspace.connected, plugins.enabledIds]);
+  const workspaceError = error ?? plugins.error ?? googleWorkspace.error ?? skills.error;
   const visible = useMemo(() => {
     const clientIds = new Set(clients.map((client) => client.id));
     return goals.filter((goal) => clientIds.has(goal.clientId) && (!effectiveClientId || goal.clientId === effectiveClientId) && (status === "all" || goal.status === status)).sort((left, right) => {

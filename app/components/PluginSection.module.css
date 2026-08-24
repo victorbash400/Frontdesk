@@ -1,0 +1,5 @@
+.section { margin-top: 30px; }
+.section > header { margin: 0 0 10px; }
+.section h2 { margin: 0; color: #3d3d3a; font-size: 13px; font-weight: 590; }
+.section header p { margin: 5px 0 0; color: #92928e; font-size: 10px; }
+.list { overflow: hidden; border: 1px solid #e3e3df; border-radius: 18px; background: #fff; }

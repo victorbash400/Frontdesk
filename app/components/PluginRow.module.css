@@ -49,6 +49,10 @@
 
 .switch[aria-checked="true"] { background: #30302e; }
 .switch[aria-checked="true"] span { transform: translateX(16px); }
+.switch:disabled { cursor: default; }
+
+.copy small button { display: inline-grid; width: 18px; height: 18px; margin: -3px 0 -4px 4px; padding: 0; place-items: center; border: 0; background: transparent; color: #8f8f8a; cursor: pointer; vertical-align: middle; }
+.copy small button svg { width: 13px; height: 13px; }
 
 @media (prefers-reduced-motion: reduce) {
   .switch, .switch span { transition: none; }

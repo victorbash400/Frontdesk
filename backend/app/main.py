@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import html
+import json
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -12,9 +13,12 @@ from .auth import require_account_id
 from .chat_stream import stream_agent_events
 from .config import get_settings
 from .database import SessionLocal, get_session, initialize_database
-from .google_oauth import begin_connection, connection_status, disconnect, finish_connection
+from .google_oauth import begin_connection, connection_status, disconnect, finish_connection, set_workspace_permission
+from .mcp_oauth import begin_connection as begin_mcp_connection
+from .mcp_oauth import connection_support, disconnect as disconnect_mcp, finish_connection as finish_mcp_connection
+from .plugin_service import install_plugin, plugin_snapshot, uninstall_plugin
 from .repository import create_node, list_nodes, search_nodes, set_trashed, update_node
-from .schemas import AccountCreate, AccountCredentials, AccountRead, ChatRequest, HealthRead, NodeCreate, NodeRead, NodeUpdate
+from .schemas import AccountCreate, AccountCredentials, AccountRead, ChatRequest, HealthRead, NodeCreate, NodeRead, NodeUpdate, PermissionUpdate
 
 
 @asynccontextmanager
@@ -89,6 +93,57 @@ def delete_google_connection(account_id: str = Depends(require_account_id), sess
     return {"connected": False}
 
 
+@app.put("/api/plugins/google/permissions/{permission_id}")
+def put_google_permission(permission_id: str, body: PermissionUpdate, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    try:
+        set_workspace_permission(session, account_id, permission_id, body.enabled)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+    return connection_status(session, account_id)
+
+
+@app.get("/api/plugins")
+def get_plugins(account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    return plugin_snapshot(session, account_id, connection_support())
+
+
+@app.post("/api/plugins/{plugin_id}", status_code=201)
+def post_plugin(plugin_id: str, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    try:
+        install_plugin(session, account_id, plugin_id)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+    return plugin_snapshot(session, account_id, connection_support())
+
+
+@app.delete("/api/plugins/{plugin_id}")
+def delete_plugin(plugin_id: str, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    try:
+        uninstall_plugin(session, account_id, plugin_id)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+    return plugin_snapshot(session, account_id, connection_support())
+
+
+@app.post("/api/plugins/{plugin_id}/connect")
+async def post_plugin_connection(plugin_id: str, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, str]:
+    try:
+        return {"authorization_url": await begin_mcp_connection(session, account_id, plugin_id)}
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+    except (RuntimeError, httpx.HTTPError) as error:
+        raise HTTPException(503, str(error)) from error
+
+
+@app.delete("/api/plugins/{plugin_id}/connect")
+def delete_plugin_connection(plugin_id: str, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    try:
+        disconnect_mcp(session, account_id, plugin_id)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+    return plugin_snapshot(session, account_id, connection_support())
+
+
 @app.get("/oauth/google/callback", response_class=HTMLResponse)
 async def google_callback(state: str, code: str | None = None, error: str | None = None, session: Session = Depends(get_session)) -> HTMLResponse:
     if error or not code:
@@ -103,6 +158,24 @@ async def google_callback(state: str, code: str | None = None, error: str | None
     return HTMLResponse(
         f"<h2>Front Desk is connected.</h2><p>{html.escape(email)}</p>"
         "<script>window.opener?.postMessage({type:'front-desk-google-connected'}, '*');window.close()</script>"
+    )
+
+
+@app.get("/oauth/mcp/callback", response_class=HTMLResponse)
+async def mcp_callback(state: str, code: str | None = None, error: str | None = None, session: Session = Depends(get_session)) -> HTMLResponse:
+    if error or not code:
+        return HTMLResponse("<h2>Front Desk was not connected.</h2><p>You can close this window.</p>", status_code=400)
+    try:
+        plugin_id, account_label = await finish_mcp_connection(session, state, code)
+    except Exception as connection_error:
+        return HTMLResponse(
+            f"<h2>Front Desk was not connected.</h2><p>{html.escape(str(connection_error))}</p>",
+            status_code=400,
+        )
+    event = json.dumps({"type": "front-desk-plugin-connected", "pluginId": plugin_id})
+    return HTMLResponse(
+        f"<h2>{html.escape(plugin_id.title())} is connected.</h2><p>{html.escape(account_label)}</p>"
+        f"<script>window.opener?.postMessage({event}, '*');window.close()</script>"
     )
 
 

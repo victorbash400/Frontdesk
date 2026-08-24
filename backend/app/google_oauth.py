@@ -1,16 +1,16 @@
-import secrets
 import base64
 import hashlib
+import secrets
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
 import httpx
-from cryptography.fernet import Fernet
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
-from .models import OAuthConnection
+from .models import OAuthConnection, PluginPermission
+from .secret_store import decrypt_secret, encrypt_secret
 
 
 REDIRECT_URI = "http://127.0.0.1:8000/oauth/google/callback"
@@ -23,30 +23,45 @@ SCOPES = (
     "profile",
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.events.freebusy",
+    "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/presentations",
     "https://www.googleapis.com/auth/tasks",
+    "https://www.googleapis.com/auth/contacts.readonly",
+    "https://www.googleapis.com/auth/forms.body",
+    "https://www.googleapis.com/auth/forms.responses.readonly",
+    "https://www.googleapis.com/auth/meetings.space.created",
+    "https://www.googleapis.com/auth/meetings.space.readonly",
+)
+WORKSPACE_REQUIRED_SCOPES = frozenset(scope for scope in SCOPES if scope.startswith("https://www.googleapis.com/auth/"))
+WORKSPACE_PERMISSIONS = (
+    ("workspace.drive", "Google Drive", "Search, read, create, and organize Drive files"),
+    ("workspace.docs", "Google Docs", "Read and update Google documents"),
+    ("workspace.sheets", "Google Sheets", "Read and update spreadsheets"),
+    ("workspace.slides", "Google Slides", "Read and update presentations"),
+    ("workspace.gmail", "Gmail", "Read mail, organize messages, and create drafts"),
+    ("workspace.calendar", "Google Calendar", "Read and manage calendar events"),
+    ("workspace.people", "Google Contacts", "Find people and contact details"),
+    ("workspace.tasks", "Google Tasks", "Create and manage task lists and tasks"),
+    ("workspace.forms", "Google Forms", "Create forms and read responses"),
+    ("workspace.meet", "Google Meet", "Create meetings and read meeting details"),
 )
 
 
 @dataclass
 class PendingConnection:
     account_id: str
+    verifier: str
 
 
 pending_connections: dict[str, PendingConnection] = {}
 
 
-def _token_cipher() -> Fernet:
-    secret = get_settings().internal_secret.encode()
-    key = base64.urlsafe_b64encode(hashlib.sha256(secret).digest())
-    return Fernet(key)
-
-
 def decrypt_refresh_token(connection: OAuthConnection) -> str:
-    return _token_cipher().decrypt(connection.refresh_token.encode()).decode()
+    return decrypt_secret(connection.refresh_token)
 
 
 def connection_status(session: Session, account_id: str) -> dict[str, object]:
@@ -56,10 +71,23 @@ def connection_status(session: Session, account_id: str) -> dict[str, object]:
         OAuthConnection.account_id == account_id,
         OAuthConnection.provider == "google_workspace",
     ))
+    granted_scopes = set(connection.scopes.split()) if connection else set()
+    missing_scopes = sorted(WORKSPACE_REQUIRED_SCOPES - granted_scopes) if connection else []
+    permission_rows = {
+        permission.permission_id: permission.enabled
+        for permission in session.scalars(select(PluginPermission).where(PluginPermission.account_id == account_id))
+    }
     return {
         "configured": bool(client_id and client_secret),
-        "connected": connection is not None,
+        "connected": connection is not None and not missing_scopes,
+        "needs_reconnect": connection is not None and bool(missing_scopes),
+        "missing_scopes": missing_scopes,
         "email": connection.email if connection else None,
+        "name": connection.profile_name if connection else None,
+        "permissions": [
+            {"id": permission_id, "name": name, "description": description, "enabled": permission_rows.get(permission_id, True)}
+            for permission_id, name, description in WORKSPACE_PERMISSIONS
+        ],
     }
 
 
@@ -69,7 +97,9 @@ def begin_connection(account_id: str) -> str:
     if not client_id or not client_secret:
         raise RuntimeError("Google Workspace OAuth is not configured.")
     state = secrets.token_urlsafe(32)
-    pending_connections[state] = PendingConnection(account_id=account_id)
+    verifier = secrets.token_urlsafe(64)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+    pending_connections[state] = PendingConnection(account_id=account_id, verifier=verifier)
     return AUTH_URL + "?" + urlencode({
         "client_id": client_id,
         "redirect_uri": REDIRECT_URI,
@@ -79,6 +109,8 @@ def begin_connection(account_id: str) -> str:
         "prompt": "consent",
         "include_granted_scopes": "true",
         "state": state,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
     })
 
 
@@ -93,6 +125,7 @@ async def finish_connection(session: Session, state: str, code: str) -> str:
             "client_id": client_id,
             "client_secret": client_secret,
             "code": code,
+            "code_verifier": pending.verifier,
             "grant_type": "authorization_code",
             "redirect_uri": REDIRECT_URI,
         })
@@ -104,25 +137,71 @@ async def finish_connection(session: Session, state: str, code: str) -> str:
             raise RuntimeError("Google did not return an offline account token.")
         user_response = await client.get(USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"})
         user_response.raise_for_status()
-        email = str(user_response.json().get("email") or "")
+        user = user_response.json()
+        email = str(user.get("email") or "")
+        name = str(user.get("name") or "")
+        picture = str(user.get("picture") or "")
+        granted_scopes = set(str(tokens.get("scope") or " ".join(SCOPES)).split())
+        missing_scopes = WORKSPACE_REQUIRED_SCOPES - granted_scopes
+        if missing_scopes:
+            raise RuntimeError("Google Workspace did not grant every required permission. Reconnect and approve all requested access.")
+        await _validate_workspace_token(client, access_token)
     connection = session.scalar(select(OAuthConnection).where(
         OAuthConnection.account_id == pending.account_id,
         OAuthConnection.provider == "google_workspace",
     ))
     if connection:
         connection.email = email
-        connection.refresh_token = _token_cipher().encrypt(refresh_token.encode()).decode()
+        connection.profile_name = name
+        connection.picture_url = picture
+        connection.refresh_token = encrypt_secret(refresh_token)
         connection.scopes = str(tokens.get("scope") or "")
     else:
         session.add(OAuthConnection(
             account_id=pending.account_id,
             provider="google_workspace",
             email=email,
-            refresh_token=_token_cipher().encrypt(refresh_token.encode()).decode(),
+            profile_name=name,
+            picture_url=picture,
+            refresh_token=encrypt_secret(refresh_token),
             scopes=str(tokens.get("scope") or ""),
         ))
     session.commit()
     return email
+
+
+def set_workspace_permission(session: Session, account_id: str, permission_id: str, enabled: bool) -> None:
+    valid_ids = {item[0] for item in WORKSPACE_PERMISSIONS}
+    if permission_id not in valid_ids:
+        raise ValueError("Unknown Google Workspace permission.")
+    permission = session.scalar(select(PluginPermission).where(
+        PluginPermission.account_id == account_id,
+        PluginPermission.permission_id == permission_id,
+    ))
+    if permission:
+        permission.enabled = enabled
+    else:
+        session.add(PluginPermission(account_id=account_id, permission_id=permission_id, enabled=enabled))
+    session.commit()
+
+
+async def _validate_workspace_token(client: httpx.AsyncClient, access_token: str) -> None:
+    headers = {"Authorization": f"Bearer {access_token}"}
+    checks = (
+        ("Gmail", "https://gmail.googleapis.com/gmail/v1/users/me/profile"),
+        ("Google Drive", "https://www.googleapis.com/drive/v3/files?pageSize=1&fields=files(id)"),
+    )
+    for product, url in checks:
+        response = await client.get(url, headers=headers)
+        if response.is_success:
+            continue
+        try:
+            detail = response.json().get("error", {}).get("message")
+        except ValueError:
+            detail = response.text[:300]
+        raise RuntimeError(
+            f"{product} authorization failed: {detail or response.reason_phrase}. Reconnect and approve the requested access."
+        )
 
 
 def disconnect(session: Session, account_id: str) -> None:

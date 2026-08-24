@@ -1,62 +1,74 @@
 "use client";
 
 import { Search } from "lucide-react";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 
 import { usePluginDirectory } from "../hooks/usePluginDirectory";
-import { useGoogleWorkspaceConnection } from "../hooks/useGoogleWorkspaceConnection";
-import { pluginDirectory, type PluginCategory, type PluginDefinition } from "../lib/pluginDirectory";
+import { pluginDirectory, type PluginDefinition, type PluginState } from "../lib/pluginDirectory";
+import { AvailablePluginGroups } from "./AvailablePluginGroups";
 import { PluginConnectionDialog } from "./PluginConnectionDialog";
 import { PluginRow } from "./PluginRow";
+import { PluginSection } from "./PluginSection";
+import { WorkspaceSection } from "./WorkspaceSection";
 import styles from "./PluginStore.module.css";
 
-const categories: Array<{ id: PluginCategory; label: string }> = [
-  { id: "plugins", label: "Plugins" },
-  { id: "apps", label: "Apps" },
-  { id: "mcps", label: "MCPs" },
-];
-const googlePluginIds = new Set(["gmail", "google-drive", "calendar"]);
 
 export function PluginStore({ accountId }: { accountId: string }) {
-  const { enabledIds, error, loaded, toggle } = usePluginDirectory(accountId);
-  const google = useGoogleWorkspaceConnection();
-  const [connectionError, setConnectionError] = useState<string>();
-  const [category, setCategory] = useState<PluginCategory>("plugins");
+  const directory = usePluginDirectory(accountId);
   const [pendingPlugin, setPendingPlugin] = useState<PluginDefinition>();
+  const [view, setView] = useState<"plugins" | "directory">("plugins");
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase());
-  const visible = pluginDirectory.filter((plugin) => plugin.category === category && (!deferredQuery || `${plugin.name} ${plugin.description}`.toLocaleLowerCase().includes(deferredQuery)));
+  const stateById = useMemo(() => new Map(directory.plugins.map((state) => [state.id, state])), [directory.plugins]);
+  const entries = pluginDirectory
+    .filter((plugin) => !deferredQuery || `${plugin.name} ${plugin.description}`.toLocaleLowerCase().includes(deferredQuery))
+    .flatMap((plugin) => {
+      const state = stateById.get(plugin.id);
+      return state ? [{ plugin, state }] : [];
+    });
+  const installed = entries.filter(({ state }) => state.installed);
+  const available = entries.filter(({ state }) => !state.installed);
+  const pendingState = pendingPlugin ? stateById.get(pendingPlugin.id) : undefined;
 
-  if (!loaded) return null;
+  const add = async (plugin: PluginDefinition, state: PluginState) => {
+    try {
+      await directory.add(plugin.id);
+      if (state.connection_supported) setPendingPlugin(plugin);
+    } catch (reason) {
+      directory.setError(reason instanceof Error ? reason.message : "Could not add plugin");
+    }
+  };
+
+  if (!directory.loaded) return <p className={styles.loading}>Loading plugins…</p>;
 
   return (
-    <section aria-label="Plugin directory" className={styles.store}>
-      <header>
-        <span><h1>Plugins</h1><p>Connect the tools Front Desk can use</p></span>
-        <label><Search aria-hidden="true" /><input aria-label="Search plugins" onChange={(event) => setQuery(event.target.value)} placeholder="Search plugins" type="search" value={query} /></label>
+    <section aria-label="Plugin store" className={styles.store}>
+      <header className={styles.heading}>
+        <span><h1>{view === "plugins" ? "Plugins" : "Plugin directory"}</h1><p>{view === "plugins" ? "Manage the tools Front Desk can use." : "Add tools to Front Desk, then connect the account they should use."}</p></span>
+        <button className={styles.browse} onClick={() => { setQuery(""); setView(view === "plugins" ? "directory" : "plugins"); }} type="button">{view === "plugins" ? "Browse directory" : "Back to plugins"}</button>
       </header>
-      <nav aria-label="Plugin categories">
-        {categories.map((item) => {
-          const count = pluginDirectory.filter((plugin) => plugin.category === item.id).length;
-          return <button aria-current={category === item.id ? "page" : undefined} key={item.id} onClick={() => setCategory(item.id)} type="button">{item.label} <small>{count}</small></button>;
-        })}
-      </nav>
-      {error || google.error || connectionError ? <p className={styles.error} role="alert">{connectionError || google.error || error}</p> : null}
-      <section className={styles.list}>
-        {visible.map((plugin) => <PluginRow enabled={googlePluginIds.has(plugin.id) ? google.connected : enabledIds.has(plugin.id)} key={plugin.id} onToggle={() => setPendingPlugin(plugin)} plugin={plugin} />)}
-      </section>
+      <label className={styles.search}><Search aria-hidden="true" /><input aria-label="Search plugins" onChange={(event) => setQuery(event.target.value)} placeholder="Search plugins" type="search" value={query} /></label>
+      {directory.error ? <p className={styles.error} role="alert">{directory.error}</p> : null}
+      {view === "plugins" ? <>
+        <WorkspaceSection accountId={accountId} />
+        <PluginSection title="Plugins">
+          {installed.map(({ plugin, state }) => <PluginRow
+            detail={state.built_in ? plugin.description : state.connected ? `${state.account_label || plugin.description}${state.tool_count ? ` · ${state.tool_count} tools` : ""}` : state.setup_message || "Installed, not connected"}
+            disabled={state.built_in}
+            enabled={state.connected}
+            key={plugin.id}
+            onToggle={() => setPendingPlugin(plugin)}
+            plugin={plugin}
+          />)}
+        </PluginSection>
+      </> : <AvailablePluginGroups entries={available} onAdd={(plugin, state) => void add(plugin, state)} />}
       <PluginConnectionDialog
-        connected={pendingPlugin ? googlePluginIds.has(pendingPlugin.id) ? google.connected : enabledIds.has(pendingPlugin.id) : false}
+        connected={pendingState?.connected || false}
         onCancel={() => setPendingPlugin(undefined)}
         onConfirm={() => {
-          if (!pendingPlugin) return;
-          if (googlePluginIds.has(pendingPlugin.id)) {
-            const action = google.connected ? google.disconnect() : google.connect();
-            void action.catch((reason) => setConnectionError(reason instanceof Error ? reason.message : "Could not update Google Workspace"));
-            setPendingPlugin(undefined);
-            return;
-          }
-          toggle(pendingPlugin.id);
+          if (!pendingPlugin || !pendingState) return;
+          const action = pendingState.connected ? directory.disconnect(pendingPlugin.id) : directory.connect(pendingPlugin.id);
+          void action.catch((reason) => directory.setError(reason instanceof Error ? reason.message : "Could not update plugins"));
           setPendingPlugin(undefined);
         }}
         plugin={pendingPlugin}

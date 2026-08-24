@@ -3,10 +3,27 @@
 import { useCallback, useEffect, useState } from "react";
 
 
-type ConnectionState = { configured: boolean; connected: boolean; email?: string | null };
+export type WorkspacePermission = { id: string; name: string; description: string; enabled: boolean };
+type ConnectionState = {
+  configured: boolean;
+  connected: boolean;
+  needs_reconnect: boolean;
+  missing_scopes: string[];
+  email?: string | null;
+  name?: string | null;
+  permissions: WorkspacePermission[];
+};
+
+const emptyState: ConnectionState = {
+  configured: false,
+  connected: false,
+  needs_reconnect: false,
+  missing_scopes: [],
+  permissions: [],
+};
 
 export function useGoogleWorkspaceConnection() {
-  const [state, setState] = useState<ConnectionState>({ configured: false, connected: false });
+  const [state, setState] = useState<ConnectionState>(emptyState);
   const [error, setError] = useState<string>();
 
   const refresh = useCallback(async () => {
@@ -50,5 +67,16 @@ export function useGoogleWorkspaceConnection() {
     await refresh();
   }, [refresh]);
 
-  return { ...state, connect, disconnect, error, refresh };
+  const setPermission = useCallback(async (permissionId: string, enabled: boolean) => {
+    const response = await fetch(`/api/plugins/google/permissions/${encodeURIComponent(permissionId)}`, {
+      body: JSON.stringify({ enabled }),
+      headers: { "Content-Type": "application/json" },
+      method: "PUT",
+    });
+    const payload = await response.json() as ConnectionState & { error?: string };
+    if (!response.ok) throw new Error(payload.error || "Could not update the Workspace permission");
+    setState(payload);
+  }, []);
+
+  return { ...state, connect, disconnect, error, refresh, setError, setPermission };
 }

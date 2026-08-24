@@ -63,6 +63,48 @@ def test_demo_account_is_available() -> None:
         assert response.json()["name"] == "Demo"
 
 
+def test_plugin_installations_are_account_scoped() -> None:
+    with TestClient(app) as client:
+        first = create_account(client, "plugins-first@example.com", "Plugins First")
+        second = create_account(client, "plugins-second@example.com", "Plugins Second")
+        first_headers = account_headers(first["id"])
+        second_headers = account_headers(second["id"])
+
+        initial = client.get("/api/plugins", headers=first_headers)
+        assert initial.status_code == 200
+        initial_states = {plugin["id"]: plugin for plugin in initial.json()["plugins"]}
+        assert initial_states["code"]["installed"] is True
+        assert initial_states["code"]["connected"] is True
+        assert initial_states["notion"]["installed"] is False
+
+        installed = client.post("/api/plugins/notion", headers=first_headers)
+        assert installed.status_code == 201
+        assert {plugin["id"]: plugin for plugin in installed.json()["plugins"]}["notion"]["installed"] is True
+        second_states = {plugin["id"]: plugin for plugin in client.get("/api/plugins", headers=second_headers).json()["plugins"]}
+        assert second_states["notion"]["installed"] is False
+
+        removed = client.delete("/api/plugins/notion", headers=first_headers)
+        assert removed.status_code == 200
+        assert {plugin["id"]: plugin for plugin in removed.json()["plugins"]}["notion"]["installed"] is False
+
+
+def test_workspace_permissions_are_account_scoped() -> None:
+    with TestClient(app) as client:
+        first = create_account(client, "workspace-first@example.com", "Workspace First")
+        second = create_account(client, "workspace-second@example.com", "Workspace Second")
+        first_headers = account_headers(first["id"])
+        second_headers = account_headers(second["id"])
+
+        updated = client.put("/api/plugins/google/permissions/workspace.gmail", headers=first_headers, json={"enabled": False})
+        assert updated.status_code == 200
+        first_permissions = {permission["id"]: permission["enabled"] for permission in updated.json()["permissions"]}
+        assert first_permissions["workspace.gmail"] is False
+
+        second = client.get("/api/plugins/google", headers=second_headers)
+        second_permissions = {permission["id"]: permission["enabled"] for permission in second.json()["permissions"]}
+        assert second_permissions["workspace.gmail"] is True
+
+
 def create_account(client: TestClient, email: str, name: str) -> dict[str, str]:
     response = client.post("/accounts", json={"email": email, "password": "password-123", "name": name})
     assert response.status_code == 201
