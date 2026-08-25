@@ -1,0 +1,31 @@
+{
+  "name": "@front-desk/browser-extension",
+  "version": "0.3.3",
+  "description": "Front Desk browser bridge built on the Playwright extension protocol",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/microsoft/playwright.git"
+  },
+  "homepage": "https://github.com/microsoft/playwright/tree/main/packages/extension",
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "vite build && vite build --config vite.background.config.mts && node scripts/copy-static.mjs",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.ui.json"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/chrome": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest"
+  }
+}

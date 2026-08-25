@@ -1,0 +1,82 @@
+diff --git a/lib/coreBundle.js b/lib/coreBundle.js
+index d53d1ca2b562e59e251470853830158cbe5c5ccc..788d1309c79363fde3eb08762367a2a81e798016 100644
+--- a/lib/coreBundle.js
++++ b/lib/coreBundle.js
+@@ -63764,29 +63764,9 @@ async function waitForCompletion(tab2, callback) {
+   let result2;
+   try {
+     result2 = await callback();
+-    await tab2.waitForTimeout(settleMs);
+   } finally {
+     disposeListeners();
+   }
+-  const requestedNavigation = requests2.some((request2) => request2.isNavigationRequest());
+-  if (requestedNavigation) {
+-    await tab2.page.mainFrame().waitForLoadState("load", { timeout: 1e4 }).catch(() => {
+-    });
+-    return result2;
+-  }
+-  const promises2 = [];
+-  for (const request2 of requests2) {
+-    if (["document", "stylesheet", "script", "xhr", "fetch"].includes(request2.resourceType()))
+-      promises2.push(request2.response().then((r) => r?.finished()).catch(() => {
+-      }));
+-    else
+-      promises2.push(request2.response().catch(() => {
+-      }));
+-  }
+-  const timeout = new Promise((resolve) => setTimeout(resolve, 5e3));
+-  await Promise.race([Promise.all(promises2), timeout]);
+-  if (requests2.length)
+-    await tab2.waitForTimeout(settleMs);
+   return result2;
+ }
+ function eventWaiter(page, event, timeout) {
+@@ -63997,11 +63977,12 @@ var init_snapshot = __esm({
+         type: "input"
+       },
+       handle: async (tab2, params2, response2) => {
+-        response2.setIncludeSnapshot();
+         const { locator: locator2, selector } = await tab2.targetLocator(params2);
+         const options = {
+           button: params2.button,
+           modifiers: params2.modifiers,
++          force: true,
++          noWaitAfter: true,
+           ...tab2.actionTimeoutOptions
+         };
+         response2.addAction({
+@@ -64520,7 +64501,7 @@ var init_tab = __esm({
+         this._clearCollectedArtifacts();
+         const { promise: downloadEvent, abort: abortDownloadEvent } = eventWaiter(this.page, "download", 3e3);
+         try {
+-          await this.page.goto(url3, { waitUntil: "domcontentloaded", ...this.navigationTimeoutOptions });
++          await this.page.goto(url3, { waitUntil: "commit", ...this.navigationTimeoutOptions });
+           abortDownloadEvent();
+         } catch (_e) {
+           const e = _e;
+@@ -64534,7 +64515,6 @@ var init_tab = __esm({
+           await new Promise((resolve) => setTimeout(resolve, 500));
+           return;
+         }
+-        await this.waitForLoadState("load", { timeout: 5e3 });
+       }
+       async consoleMessageCount() {
+         await this._initializedPromise;
+@@ -66545,7 +66525,6 @@ var init_navigate = __esm({
+       handle: async (context2, params2, response2) => {
+         const tab2 = await context2.ensureTab();
+         const url3 = await tab2.checkUrlAndNavigate(params2.url);
+-        response2.setIncludeSnapshot();
+         response2.addAction({ name: "navigate", url: url3 });
+       }
+     });
+@@ -74487,7 +74466,7 @@ var init_dashboardController = __esm({
+       async navigate(params2) {
+         if (!params2.url)
+           return;
+-        await wrapInternal(this._page, () => this._page.goto(params2.url));
++        await wrapInternal(this._page, () => this._page.goto(params2.url, { waitUntil: "commit" }));
+       }
+       async back() {
+         await wrapInternal(this._page, () => this._page.goBack());

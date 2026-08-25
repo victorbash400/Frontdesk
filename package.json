@@ -7,13 +7,17 @@
     "backend": "backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000",
     "backend:test": "cd backend && .venv/bin/python -m pytest tests -q",
     "build": "next build",
+    "extension:build": "pnpm --dir extension build",
+    "extension:typecheck": "pnpm --dir extension typecheck",
     "start": "next start",
     "lint": "eslint ."
   },
   "dependencies": {
+    "@playwright/mcp": "^0.0.79",
     "lucide-react": "^1.33.0",
     "next": "latest",
     "next-auth": "5.0.0-beta.32",
+    "ogl": "^1.0.11",
     "react": "latest",
     "react-dom": "latest",
     "react-markdown": "^10.1.0",

@@ -15,6 +15,7 @@ backend/.env
 backend/client_secret_*.json
 backend/*.db
 backend/.sessions/
+backend/.browser-artifacts/
 __pycache__/
 *.py[cod]
 
