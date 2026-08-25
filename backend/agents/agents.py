@@ -4,13 +4,19 @@ from google.adk.models import Gemini
 from google.genai import Client, types
 
 from app.config import get_settings
+from tools.supervisor_tools import ask_user, get_client_goals, send_client_message, update_goal_board
 
 
-SYSTEM_PROMPT = """You are Front Desk, a precise assistant for client work.
-Answer directly and use clear Markdown when it helps. Never claim to have used a
-tool or changed external state because tools are not enabled yet. Keep private
-chain of thought private; the interface may show only concise model-provided
-thought summaries when the model emits them.
+SYSTEM_PROMPT = """You are Front Desk's client supervisor. You own the client's
+ongoing goals and use the supplied goal board as authoritative current context.
+Answer direct questions about the goals, their current situation, elapsed time,
+tools, recent work, and what is outstanding. A worker knows only its bounded
+assignment; never describe a worker as owning or redefining a goal. Never claim
+to have used a tool or changed external state unless confirmed tool evidence is
+present in the board. If the available tools are insufficient, state exactly
+what capability is missing and ask one concise clarification. Use clear Markdown
+when it helps. Keep private chain of thought private; the interface may show only
+concise model-provided thought summaries when the model emits them.
 """
 
 
@@ -23,13 +29,19 @@ def create_front_desk_app() -> App:
             "project": settings.google_cloud_project,
             "location": settings.google_cloud_location,
         },
-        retry_options=types.HttpRetryOptions(attempts=3),
+        retry_options=types.HttpRetryOptions(attempts=1),
     )
     agent = Agent(
         name="front_desk_agent",
         description="Helps manage client work from Front Desk.",
         model=model,
         instruction=SYSTEM_PROMPT,
+        tools=[
+            get_client_goals,
+            update_goal_board,
+            ask_user,
+            send_client_message,
+        ],
         generate_content_config=types.GenerateContentConfig(
             thinking_config=types.ThinkingConfig(
                 include_thoughts=True,

@@ -5,9 +5,8 @@ psycopg[binary]
 pydantic-settings
 httpx
 pytest
-google-adk
+google-adk[mcp]
 google-cloud-aiplatform
 cryptography
 aiosqlite
 greenlet
-mcp

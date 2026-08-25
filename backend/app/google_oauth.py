@@ -42,7 +42,7 @@ WORKSPACE_PERMISSIONS = (
     ("workspace.docs", "Google Docs", "Read and update Google documents"),
     ("workspace.sheets", "Google Sheets", "Read and update spreadsheets"),
     ("workspace.slides", "Google Slides", "Read and update presentations"),
-    ("workspace.gmail", "Gmail", "Read mail, organize messages, and create drafts"),
+    ("workspace.gmail", "Gmail", "Read, send, draft, reply to, and organize email"),
     ("workspace.calendar", "Google Calendar", "Read and manage calendar events"),
     ("workspace.people", "Google Contacts", "Find people and contact details"),
     ("workspace.tasks", "Google Tasks", "Create and manage task lists and tasks"),

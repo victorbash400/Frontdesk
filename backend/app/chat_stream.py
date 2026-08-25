@@ -10,6 +10,8 @@ from google.genai import types
 
 from agents.agents import create_front_desk_app, name_chat
 from app.config import get_settings
+from app.database import SessionLocal
+from app.goals import client_goal_context
 
 
 sessions = DatabaseSessionService(get_settings().agent_session_database_url)
@@ -32,19 +34,34 @@ async def stream_agent_events(*, account_id: str, client_id: str, chat_id: str, 
                     app_name=runner.app_name,
                     user_id=account_id,
                     session_id=session_id,
+                    state={"account_id": account_id, "client_id": client_id},
                 )
 
+            with SessionLocal() as database:
+                goal_context = client_goal_context(database, account_id, client_id)
             assistant_text = ""
             event_stream = runner.run_async(
                 user_id=account_id,
                 session_id=session_id,
-                new_message=types.Content(role="user", parts=[types.Part.from_text(text=message)]),
+                new_message=types.Content(role="user", parts=[types.Part.from_text(text=(
+                    "Authoritative active goal board for this client:\n"
+                    f"{goal_context}\n\n"
+                    "Answer the user's message as this client's supervisor. Do not expose this context wrapper.\n\n"
+                    f"User message:\n{message}"
+                ))]),
                 run_config=RunConfig(streaming_mode=StreamingMode.SSE),
             )
             async for event in event_stream:
                 if event.error_message:
                     yield sse({"type": "error", "error": event.error_message})
                     continue
+                function_calls = event.get_function_calls() if hasattr(event, "get_function_calls") else []
+                for call in function_calls:
+                    yield sse({"type": "tool_call", "id": call.id or call.name, "name": call.name, "args": call.args or {}})
+                function_responses = event.get_function_responses() if hasattr(event, "get_function_responses") else []
+                for response in function_responses:
+                    result = response.response or {}
+                    yield sse({"type": "tool_response", "id": response.id or response.name, "name": response.name, "status": "error" if isinstance(result, dict) and result.get("error") else "done"})
                 if not event.partial or not event.content:
                     continue
                 for part in event.content.parts or []:

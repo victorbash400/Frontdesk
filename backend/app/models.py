@@ -158,3 +158,76 @@ class PluginPermission(Base):
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     permission_id: Mapped[str] = mapped_column(String(80), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class Goal(Base):
+    __tablename__ = "goals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[str] = mapped_column(String(128), index=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    situation: Mapped[str] = mapped_column(Text, nullable=False)
+    skill_ids: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    plugin_ids: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="active", nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class GoalActivity(Base):
+    __tablename__ = "goal_activity"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class GoalAssignment(Base):
+    __tablename__ = "goal_assignments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
+    instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="queued", nullable=False, index=True)
+    report: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    evidence: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(128))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GoalAutomation(Base):
+    __tablename__ = "goal_automations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
+    instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(64), default="Africa/Nairobi", nullable=False)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class GoalNotification(Base):
+    __tablename__ = "goal_notifications"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[str] = mapped_column(String(128), index=True)
+    kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="open", nullable=False, index=True)
+    answer: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

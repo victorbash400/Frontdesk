@@ -13,8 +13,10 @@ class Settings(BaseSettings):
     agent_session_database_url: str = f"sqlite+aiosqlite:///{PROJECT_ROOT / 'backend' / 'front-desk-sessions.db'}"
     google_cloud_project: str = "front-desk-20260824"
     google_cloud_location: str = "global"
-    gemini_model: str = "gemini-3.6-flash"
+    gemini_model: str = "gemini-3-flash-preview"
     gemini_title_model: str = "gemini-3-flash-preview"
+    gemini_voice_model: str = "gemini-3.1-flash-live-preview"
+    gemini_api_key: str = ""
     google_client_credentials_file: str = ""
     google_client_id: str = ""
     google_client_secret: str = ""
@@ -25,6 +27,9 @@ class Settings(BaseSettings):
     gcs_bucket: str = ""
     cors_origins: str = "http://localhost:3000"
     internal_secret: str = "front-desk-local-development-secret"
+    scheduler_audience: str = ""
+    scheduler_service_account: str = ""
+    playwright_extension_token: str = ""
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / "backend" / ".env",

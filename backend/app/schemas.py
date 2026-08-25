@@ -31,6 +31,37 @@ class ChatRequest(BaseModel):
     create_title: bool = False
 
 
+class VoiceTicketRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128)
+    session_id: str = Field(min_length=1, max_length=128)
+
+
+class GoalCreate(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128)
+    text: str = Field(min_length=1, max_length=20_000)
+    skill_ids: list[str] = Field(default_factory=list, max_length=100)
+    plugin_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class GoalUpdate(BaseModel):
+    text: str | None = Field(default=None, min_length=1, max_length=20_000)
+    situation: str | None = Field(default=None, min_length=1, max_length=40_000)
+    skill_ids: list[str] | None = Field(default=None, max_length=100)
+    plugin_ids: list[str] | None = Field(default=None, max_length=100)
+    status: Literal["active", "paused", "completed"] | None = None
+    expected_version: int | None = Field(default=None, ge=1)
+
+
+class AutomationCreate(BaseModel):
+    instruction: str = Field(min_length=1, max_length=20_000)
+    interval_seconds: int = Field(ge=300, le=31_536_000)
+    timezone: str = Field(default="Africa/Nairobi", min_length=1, max_length=64)
+
+
+class NotificationAnswer(BaseModel):
+    answer: str = Field(min_length=1, max_length=20_000)
+
+
 class PermissionUpdate(BaseModel):
     enabled: bool
 

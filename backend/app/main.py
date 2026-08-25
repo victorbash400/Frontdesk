@@ -3,23 +3,27 @@ import html
 import json
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from starlette.responses import HTMLResponse, Response, StreamingResponse
 
 from .accounts import authenticate_account, create_account, ensure_demo_account
-from .auth import require_account_id
+from .auth import require_account_id, require_scheduler
 from .chat_stream import stream_agent_events
 from .config import get_settings
 from .database import SessionLocal, get_session, initialize_database
+from .event_stream import account_events
+from .goal_tasks import goal_tasks
 from .google_oauth import begin_connection, connection_status, disconnect, finish_connection, profile_photo, set_workspace_permission
+from .goals import answer_notification, claim_due_automations, create_automation, create_goal, delete_goal, list_goals, list_notifications, update_goal
 from .github_repositories import repository_access, set_repository_access
 from .mcp_oauth import begin_connection as begin_mcp_connection
 from .mcp_oauth import connection_support, disconnect as disconnect_mcp, finish_connection as finish_mcp_connection
 from .plugin_service import install_plugin, plugin_snapshot, set_plugin_permission, uninstall_plugin
 from .repository import create_node, list_nodes, search_nodes, set_trashed, update_node
-from .schemas import AccountCreate, AccountCredentials, AccountRead, ChatRequest, GitHubRepositoryUpdate, HealthRead, NodeCreate, NodeRead, NodeUpdate, PermissionUpdate
+from .schemas import AccountCreate, AccountCredentials, AccountRead, AutomationCreate, ChatRequest, GitHubRepositoryUpdate, GoalCreate, GoalUpdate, HealthRead, NodeCreate, NodeRead, NodeUpdate, NotificationAnswer, PermissionUpdate, VoiceTicketRequest
+from .voice import create_voice_ticket, run_voice_session
 
 
 @asynccontextmanager
@@ -27,6 +31,7 @@ async def lifespan(_: FastAPI):
     initialize_database()
     with SessionLocal() as session:
         ensure_demo_account(session)
+    await goal_tasks.recover()
     yield
 
 
@@ -73,6 +78,83 @@ def chat_stream(body: ChatRequest, account_id: str = Depends(require_account_id)
         create_title=body.create_title,
     )
     return StreamingResponse(events, media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/voice/ticket")
+def post_voice_ticket(body: VoiceTicketRequest, account_id: str = Depends(require_account_id)) -> dict[str, str]:
+    return {"ticket": create_voice_ticket(account_id, body.client_id, body.session_id)}
+
+
+@app.websocket("/api/voice/{session_id}")
+async def voice_socket(websocket: WebSocket, session_id: str, ticket: str, voice: str = "Kore", language: str = "en") -> None:
+    await run_voice_session(websocket, session_id, ticket, voice, language)
+
+
+@app.get("/api/goals")
+def get_goals(client_id: str | None = None, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> list[dict[str, object]]:
+    return list_goals(session, account_id, client_id)
+
+
+@app.post("/api/goals", status_code=201)
+async def post_goal(body: GoalCreate, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    goal = create_goal(session, account_id, body.client_id, body.text, body.skill_ids, body.plugin_ids)
+    if body.plugin_ids:
+        await goal_tasks.start(account_id, str(goal["id"]))
+    return goal
+
+
+@app.patch("/api/goals/{goal_id}")
+async def patch_goal(goal_id: str, body: GoalUpdate, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    if body.status in {"paused", "completed"}:
+        await goal_tasks.cancel(goal_id)
+    goal = update_goal(session, account_id, goal_id, **body.model_dump(exclude_unset=True))
+    if body.status == "active" and goal["pluginIds"]:
+        await goal_tasks.start(account_id, goal_id)
+    return goal
+
+
+@app.delete("/api/goals/{goal_id}")
+async def remove_goal(goal_id: str, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, bool]:
+    await goal_tasks.cancel(goal_id)
+    delete_goal(session, account_id, goal_id)
+    return {"deleted": True}
+
+
+@app.post("/api/goals/{goal_id}/automations", status_code=201)
+def post_goal_automation(goal_id: str, body: AutomationCreate, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    return create_automation(session, account_id, goal_id, body.instruction, body.interval_seconds, body.timezone)
+
+
+@app.get("/api/notifications")
+def get_notifications(client_id: str | None = None, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> list[dict[str, object]]:
+    return list_notifications(session, account_id, client_id)
+
+
+@app.get("/api/events/stream")
+def get_event_stream(account_id: str = Depends(require_account_id)) -> StreamingResponse:
+    return StreamingResponse(account_events.subscribe(account_id), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/notifications/{notification_id}/answer")
+async def post_notification_answer(notification_id: str, body: NotificationAnswer, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    notification = answer_notification(session, account_id, notification_id, body.answer)
+    await goal_tasks.start(
+        account_id,
+        str(notification["goalId"]),
+        f"The user answered the blocking question: {body.answer}\nContinue the goal using this answer.",
+    )
+    return notification
+
+
+@app.post("/internal/automations/run")
+async def post_run_automations(
+    _: None = Depends(require_scheduler),
+    session: Session = Depends(get_session),
+) -> dict[str, object]:
+    results = claim_due_automations(session)
+    for result in results:
+        await goal_tasks.start(str(result["account_id"]), str(result["goal_id"]), str(result["instruction"]))
+    return {"processed": len(results), "results": results}
 
 
 @app.get("/api/plugins/google")
