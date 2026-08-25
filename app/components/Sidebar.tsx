@@ -1,4 +1,4 @@
-import { BookOpenCheck, Command, FileText, Folder, FolderPlus, ListTodo, Mail, Phone, Puzzle, Trash2, type LucideIcon } from "lucide-react";
+import { BookOpenCheck, Command, FileText, Folder, ListTodo, Mail, Phone, Plus, Puzzle, Trash2, type LucideIcon } from "lucide-react";
 
 import { locationLabels } from "../lib/fileSystemSelectors";
 import type { Destination, SmartLocation } from "../types/filesystem";
@@ -36,7 +36,7 @@ export function Sidebar({ account, destination, onCreateClient, onNavigate }: Si
       </header>
       <nav aria-label="Filesystem locations">
         <button onClick={onCreateClient} type="button">
-          <FolderPlus aria-hidden="true" />
+          <Plus aria-hidden="true" />
           <span>New Client</span>
         </button>
         <p>Client</p>

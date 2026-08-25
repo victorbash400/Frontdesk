@@ -57,8 +57,8 @@ export function useGoogleWorkspaceConnection() {
     const response = await fetch("/api/plugins/google", { method: "POST" });
     const payload = await response.json() as { authorization_url?: string; error?: string };
     if (!response.ok || !payload.authorization_url) throw new Error(payload.error || "Could not start Google sign-in");
-    const popup = window.open(payload.authorization_url, "front-desk-google", "popup,width=560,height=720");
-    if (!popup) throw new Error("Allow pop-ups to connect Google Workspace");
+    const authorizationTab = window.open(payload.authorization_url, "_blank");
+    if (!authorizationTab) throw new Error("Allow new tabs to connect Google Workspace");
   }, []);
 
   const disconnect = useCallback(async () => {

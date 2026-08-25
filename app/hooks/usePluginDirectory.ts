@@ -53,8 +53,20 @@ export function usePluginDirectory(accountId: string) {
     const response = await fetch(`/api/plugins/${encodeURIComponent(pluginId)}/connect`, { method: "POST" });
     const payload = await response.json() as { authorization_url?: string; error?: string };
     if (!response.ok || !payload.authorization_url) throw new Error(payload.error || "Could not start plugin sign-in");
-    const popup = window.open(payload.authorization_url, `front-desk-${pluginId}`, "popup,width=560,height=720");
-    if (!popup) throw new Error("Allow pop-ups to connect this plugin");
+    const authorizationTab = window.open(payload.authorization_url, "_blank");
+    if (!authorizationTab) throw new Error("Allow new tabs to connect this plugin");
+    setError(undefined);
+  }, []);
+
+  const setPermission = useCallback(async (pluginId: string, permissionId: string, enabled: boolean) => {
+    const response = await fetch(`/api/plugins/${encodeURIComponent(pluginId)}/permissions/${encodeURIComponent(permissionId)}`, {
+      body: JSON.stringify({ enabled }),
+      headers: { "Content-Type": "application/json" },
+      method: "PUT",
+    });
+    const payload = await response.json() as PluginSnapshot & { error?: string };
+    if (!response.ok) throw new Error(payload.error || "Could not update the plugin permission");
+    setPlugins(payload.plugins);
     setError(undefined);
   }, []);
 
@@ -71,5 +83,6 @@ export function usePluginDirectory(accountId: string) {
     refresh,
     remove: (pluginId: string) => request(pluginId, "remove"),
     setError,
+    setPermission,
   };
 }

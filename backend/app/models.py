@@ -141,6 +141,15 @@ class PluginOAuthAttempt(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
+class GitHubRepositoryAccess(Base):
+    __tablename__ = "github_repository_access"
+    __table_args__ = (UniqueConstraint("account_id", "full_name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
 class PluginPermission(Base):
     __tablename__ = "plugin_permissions"
     __table_args__ = (UniqueConstraint("account_id", "permission_id"),)

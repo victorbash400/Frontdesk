@@ -9,6 +9,8 @@ os.environ["FRONT_DESK_AGENT_SESSION_DATABASE_URL"] = f"sqlite+aiosqlite:///{tes
 os.environ["FRONT_DESK_INTERNAL_SECRET"] = "test-internal-secret"
 
 from app.main import app
+from app.database import SessionLocal
+from app.models import GitHubRepositoryAccess
 
 
 def test_client_folder_lifecycle() -> None:
@@ -112,6 +114,58 @@ def test_workspace_permissions_are_account_scoped() -> None:
         second = client.get("/api/plugins/google", headers=second_headers)
         second_permissions = {permission["id"]: permission["enabled"] for permission in second.json()["permissions"]}
         assert second_permissions["workspace.gmail"] is True
+
+
+def test_external_plugin_permissions_are_account_scoped() -> None:
+    with TestClient(app) as client:
+        first = create_account(client, "plugin-permissions-first@example.com", "Plugin Permissions First")
+        second = create_account(client, "plugin-permissions-second@example.com", "Plugin Permissions Second")
+        first_headers = account_headers(first["id"])
+        second_headers = account_headers(second["id"])
+
+        assert client.post("/api/plugins/github", headers=first_headers).status_code == 201
+        updated = client.put("/api/plugins/github/permissions/github.issues", headers=first_headers, json={"enabled": False})
+        assert updated.status_code == 200
+        first_github = {plugin["id"]: plugin for plugin in updated.json()["plugins"]}["github"]
+        first_permissions = {permission["id"]: permission["enabled"] for permission in first_github["permissions"]}
+        assert first_permissions["github.issues"] is False
+
+        second_plugins = {plugin["id"]: plugin for plugin in client.get("/api/plugins", headers=second_headers).json()["plugins"]}
+        second_permissions = {permission["id"]: permission["enabled"] for permission in second_plugins["github"]["permissions"]}
+        assert second_permissions["github.issues"] is True
+
+
+def test_browser_use_is_directory_only() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "browser-plugin@example.com", "Browser Plugin")
+        headers = account_headers(account["id"])
+        plugins = {plugin["id"]: plugin for plugin in client.get("/api/plugins", headers=headers).json()["plugins"]}
+
+        assert plugins["browser-use"]["connection_type"] == "extension"
+        assert plugins["browser-use"]["connection_supported"] is False
+        assert client.post("/api/plugins/browser-use", headers=headers).status_code == 404
+
+
+def test_github_repository_access_is_account_scoped_and_removed_with_plugin() -> None:
+    with TestClient(app) as client:
+        first = create_account(client, "github-first@example.com", "GitHub First")
+        second = create_account(client, "github-second@example.com", "GitHub Second")
+        first_headers = account_headers(first["id"])
+        second_headers = account_headers(second["id"])
+        assert client.post("/api/plugins/github", headers=first_headers).status_code == 201
+
+        with SessionLocal() as session:
+            session.add(GitHubRepositoryAccess(account_id=first["id"], full_name="front-desk/private-client"))
+            session.commit()
+
+        first_plugins = {plugin["id"]: plugin for plugin in client.get("/api/plugins", headers=first_headers).json()["plugins"]}
+        second_plugins = {plugin["id"]: plugin for plugin in client.get("/api/plugins", headers=second_headers).json()["plugins"]}
+        assert first_plugins["github"]["repository_count"] == 1
+        assert second_plugins["github"]["repository_count"] == 0
+
+        assert client.delete("/api/plugins/github", headers=first_headers).status_code == 200
+        with SessionLocal() as session:
+            assert session.query(GitHubRepositoryAccess).filter_by(account_id=first["id"]).count() == 0
 
 
 def create_account(client: TestClient, email: str, name: str) -> dict[str, str]:

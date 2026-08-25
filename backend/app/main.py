@@ -14,11 +14,12 @@ from .chat_stream import stream_agent_events
 from .config import get_settings
 from .database import SessionLocal, get_session, initialize_database
 from .google_oauth import begin_connection, connection_status, disconnect, finish_connection, profile_photo, set_workspace_permission
+from .github_repositories import repository_access, set_repository_access
 from .mcp_oauth import begin_connection as begin_mcp_connection
 from .mcp_oauth import connection_support, disconnect as disconnect_mcp, finish_connection as finish_mcp_connection
-from .plugin_service import install_plugin, plugin_snapshot, uninstall_plugin
+from .plugin_service import install_plugin, plugin_snapshot, set_plugin_permission, uninstall_plugin
 from .repository import create_node, list_nodes, search_nodes, set_trashed, update_node
-from .schemas import AccountCreate, AccountCredentials, AccountRead, ChatRequest, HealthRead, NodeCreate, NodeRead, NodeUpdate, PermissionUpdate
+from .schemas import AccountCreate, AccountCredentials, AccountRead, ChatRequest, GitHubRepositoryUpdate, HealthRead, NodeCreate, NodeRead, NodeUpdate, PermissionUpdate
 
 
 @asynccontextmanager
@@ -153,6 +154,35 @@ def delete_plugin_connection(plugin_id: str, account_id: str = Depends(require_a
     except ValueError as error:
         raise HTTPException(404, str(error)) from error
     return plugin_snapshot(session, account_id, connection_support())
+
+
+@app.put("/api/plugins/{plugin_id}/permissions/{permission_id}")
+def put_plugin_permission(plugin_id: str, permission_id: str, body: PermissionUpdate, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    try:
+        set_plugin_permission(session, account_id, plugin_id, permission_id, body.enabled)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+    return plugin_snapshot(session, account_id, connection_support())
+
+
+@app.get("/api/plugins/github/repositories")
+async def get_github_repositories(account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    try:
+        return await repository_access(session, account_id)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+    except (RuntimeError, httpx.HTTPError) as error:
+        raise HTTPException(502, str(error)) from error
+
+
+@app.put("/api/plugins/github/repositories")
+async def put_github_repositories(body: GitHubRepositoryUpdate, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    try:
+        return await set_repository_access(session, account_id, body.repositories)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except (RuntimeError, httpx.HTTPError) as error:
+        raise HTTPException(502, str(error)) from error
 
 
 @app.get("/oauth/google/callback", response_class=HTMLResponse)

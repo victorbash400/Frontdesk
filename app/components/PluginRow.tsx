@@ -1,6 +1,7 @@
 import type { PluginDefinition } from "../lib/pluginDirectory";
 import { Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { PluginIcon } from "./PluginIcon";
 import styles from "./PluginRow.module.css";
 
 type PluginRowProps = {
@@ -15,11 +16,10 @@ type PluginRowProps = {
 };
 
 export function PluginRow({ disabled = false, disabledLabel = "Connect", detail, enabled, enabledLabel = "Disconnect", onRemove, plugin, onToggle }: PluginRowProps) {
-  const Icon = plugin.icon;
   const action = enabled ? enabledLabel : disabledLabel;
   return (
     <article className={styles.row}>
-      <span className={styles.icon} style={{ "--plugin-color": plugin.color } as React.CSSProperties}><Icon aria-hidden="true" /></span>
+      <PluginIcon plugin={plugin} variant="row" />
       <span className={styles.copy}>
         <strong>{plugin.name}</strong>
         <small>{detail || plugin.description}</small>

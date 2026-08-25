@@ -35,6 +35,10 @@ class PermissionUpdate(BaseModel):
     enabled: bool
 
 
+class GitHubRepositoryUpdate(BaseModel):
+    repositories: list[str] = Field(max_length=10_000)
+
+
 class NodeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     kind: NodeKind

@@ -1,0 +1,12 @@
+.row { display: flex; min-height: 54px; padding: 0 11px; align-items: center; gap: 12px; border-bottom: 1px solid #ecece9; }
+.row:last-child { border-bottom: 0; }
+.open { display: flex; min-width: 0; flex: 1; padding: 8px 0; align-items: center; gap: 10px; border: 0; background: transparent; color: #41413e; text-align: left; cursor: pointer; }
+.open > svg { width: 17px; height: 17px; flex: 0 0 auto; color: #73736e; stroke-width: 1.6; }
+.open span { display: grid; min-width: 0; gap: 3px; }
+.open strong, .open small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.open strong { font-size: 11px; font-weight: 570; }
+.open small { color: #8b8b86; font-size: 10px; }
+.add, .added { display: flex; min-width: 58px; height: 27px; padding: 0 9px; align-items: center; justify-content: center; gap: 5px; border-radius: 8px; font-size: 10px; }
+.add { border: 1px solid #d8d8d4; background: #fff; color: #41413e; cursor: pointer; }
+.added { border: 0; background: transparent; color: #92928d; }
+.add svg, .added svg { width: 12px; height: 12px; }

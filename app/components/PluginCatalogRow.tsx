@@ -4,12 +4,13 @@ import styles from "./PluginCatalogRow.module.css";
 
 
 export function PluginCatalogRow({ onAdd, plugin, state }: { onAdd: () => void; plugin: PluginDefinition; state: PluginState }) {
+  const comingLater = state.connection_type === "extension" && !state.connection_supported;
   return (
-    <article className={styles.row}>
+    <li className={styles.row}>
       <PluginIcon plugin={plugin} />
       <span><strong>{plugin.name}</strong><small>{plugin.description}</small></span>
-      <button disabled={state.installed} onClick={onAdd} type="button">{state.installed ? "Added" : "Add"}</button>
-      {!state.connection_supported && state.setup_message ? <p>{state.setup_message}</p> : null}
-    </article>
+      <button disabled={state.installed || comingLater} onClick={onAdd} type="button">{state.installed ? "Added" : comingLater ? "Coming later" : "Add"}</button>
+      {!comingLater && !state.connection_supported && state.setup_message ? <p>{state.setup_message}</p> : null}
+    </li>
   );
 }

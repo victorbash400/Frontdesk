@@ -1,4 +1,4 @@
-.row { position: relative; display: grid; min-height: 68px; padding: 0 10px; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 11px; }
+.row { position: relative; display: grid; min-height: 66px; padding: 0; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 11px; }
 .row span { min-width: 0; }
 .row strong, .row small { display: block; }
 .row strong { color: #333330; font-size: 12px; font-weight: 580; }

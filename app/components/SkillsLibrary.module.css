@@ -4,14 +4,13 @@
 .library header p { margin: 7px 0 0; color: #858581; font-size: 12px; }
 .library header button { display: flex; height: 32px; padding: 0 11px; align-items: center; gap: 6px; border: 0; border-radius: 9px; background: #30302e; color: #fff; font-size: 11px; cursor: pointer; }
 .library header button svg { width: 14px; height: 14px; }
-.controls { display: flex; margin: 22px 0 12px; align-items: center; justify-content: space-between; gap: 12px; }
-.search, .sort { position: relative; display: flex; height: 32px; align-items: center; border: 1px solid #dededb; border-radius: 17px; color: #858581; }
-.search { width: 240px; padding: 0 10px; gap: 7px; }
-.search svg, .sort svg { width: 14px; height: 14px; }
+.controls { display: flex; margin: 22px 0 18px; align-items: center; gap: 12px; }
+.search { position: relative; display: flex; width: 280px; height: 32px; padding: 0 10px; align-items: center; gap: 7px; border: 1px solid #dededb; border-radius: 17px; color: #858581; }
+.search svg { width: 14px; height: 14px; }
 .search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; font-size: 11px; }
-.sort svg { position: absolute; left: 9px; pointer-events: none; }
-.sort select { height: 30px; padding: 0 10px 0 29px; border: 0; outline: 0; background: transparent; color: #4e4e4a; font-size: 11px; cursor: pointer; }
 .error { margin: 0 0 10px; color: #a5322d; font-size: 11px; }
+.directory { display: grid; gap: 26px; }
+.empty { margin: 0; padding: 80px 12px; color: #aaa9a4; font-size: 11px; text-align: center; }
 
 @media (max-width: 760px) {
   .library { width: calc(100% - 32px); }

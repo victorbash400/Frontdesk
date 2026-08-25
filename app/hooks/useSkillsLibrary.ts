@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { loadSkills, saveSkills } from "../lib/skillStorage";
-import type { OperatorSkill } from "../types/skill";
+import type { CatalogSkill, OperatorSkill } from "../types/skill";
 
 export function useSkillsLibrary(accountId: string) {
   const [skills, setSkills] = useState<OperatorSkill[]>([]);
@@ -34,12 +34,23 @@ export function useSkillsLibrary(accountId: string) {
       description: description.trim(),
       instructions: "",
       updatedAt: new Date().toISOString(),
+      source: "user",
     };
     const next = [skill, ...skills];
     saveSkills(accountId, next);
     setSkills(next);
     setError(undefined);
     return id;
+  }, [accountId, skills]);
+
+  const addCatalogSkill = useCallback((catalogSkill: CatalogSkill) => {
+    if (skills.some((skill) => skill.id === catalogSkill.id)) return catalogSkill.id;
+    const skill: OperatorSkill = { ...catalogSkill, updatedAt: new Date().toISOString() };
+    const next = [...skills, skill];
+    saveSkills(accountId, next);
+    setSkills(next);
+    setError(undefined);
+    return skill.id;
   }, [accountId, skills]);
 
   const updateSkill = useCallback((id: string, update: Pick<OperatorSkill, "name" | "description" | "instructions">) => {
@@ -52,7 +63,7 @@ export function useSkillsLibrary(accountId: string) {
     setError(undefined);
   }, [accountId, skills]);
 
-  return { createSkill, error, loaded, skills, updateSkill };
+  return { addCatalogSkill, createSkill, error, loaded, skills, updateSkill };
 }
 
 function normalizeName(name: string) {

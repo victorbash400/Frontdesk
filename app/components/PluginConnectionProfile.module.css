@@ -1,0 +1,9 @@
+.profile { display: flex; min-height: 176px; padding: 8px 20px 12px; align-items: center; justify-content: center; flex-direction: column; text-align: center; }
+.identity { min-width: 0; margin-top: 12px; }
+.identity strong, .identity span { display: block; }
+.identity strong { color: #30302e; font-size: 20px; font-weight: 580; }
+.identity span { margin-top: 5px; overflow: hidden; color: #858581; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.profile button { min-width: 84px; height: 32px; margin-top: 14px; padding: 0 17px; border: 0; border-radius: 999px; color: #fff; background: #30302e; font: inherit; font-size: 12px; font-weight: 560; cursor: pointer; }
+.profile button:hover { background: #41413e; }
+.profile button:disabled { cursor: default; opacity: .45; }
+.profile button:focus-visible { outline: 2px solid #7c6cff; outline-offset: 2px; }

@@ -1,3 +1,10 @@
 .icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border: 1px solid #e4e4e0; border-radius: 10px; color: var(--plugin-color); background: #fff; }
 .icon svg { width: 18px; height: 18px; stroke-width: 1.75; }
 .icon img { width: 20px; height: 20px; object-fit: contain; }
+.row { width: 24px; height: 24px; border: 0; border-radius: 0; background: transparent; }
+.row svg { width: 17px; height: 17px; stroke-width: 1.65; }
+.dialog { width: 38px; height: 38px; border-radius: 11px; }
+.dialog svg { width: 20px; height: 20px; stroke-width: 1.7; }
+.profile { width: 78px; height: 78px; border-radius: 22px; background: #f7f7f5; }
+.profile svg { width: 36px; height: 36px; stroke-width: 1.45; }
+.profile img { width: 38px; height: 38px; }

@@ -32,5 +32,11 @@ function isMessage(value: unknown): value is ClientChatMessage {
   const message = value as Partial<ClientChatMessage>;
   if (typeof message.id !== "string" || typeof message.kind !== "string") return false;
   if (message.kind === "message") return (message.role === "user" || message.role === "assistant") && typeof message.text === "string";
-  return message.kind === "tool" && typeof message.name === "string" && (message.status === "running" || message.status === "done" || message.status === "error");
+  if (message.kind === "reasoning") {
+    return typeof message.text === "string"
+      && (message.startedAt === undefined || typeof message.startedAt === "number")
+      && (message.finishedAt === undefined || typeof message.finishedAt === "number");
+  }
+  if (message.kind === "tool") return typeof message.name === "string" && (message.status === "running" || message.status === "done" || message.status === "error");
+  return false;
 }
