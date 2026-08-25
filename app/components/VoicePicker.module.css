@@ -1,0 +1,15 @@
+.picker { position:relative; display:flex; width:100%; height:100%; box-sizing:border-box; padding:48px 20px 18px; align-items:center; justify-content:center; flex-direction:column; color:#292927; }
+.picker header { position:absolute; top:8px; left:50%; transform:translateX(-50%); font-size:12px; font-weight:620; }
+.picker button { display:grid; width:32px; height:32px; padding:0; place-items:center; color:#6d6d69; background:transparent; border:0; border-radius:9px; cursor:pointer; }
+.picker button:hover { color:#1d1d1b; background:#f1f1ef; }
+.picker button svg { width:18px; height:18px; stroke-width:1.6; }
+.carousel { display:grid; height:min(210px,38vh); grid-template-columns:32px minmax(0,210px) 32px; gap:8px; align-items:center; justify-items:center; }
+.orb { width:min(210px,38vh); aspect-ratio:1; }
+.orb>div { width:100%; height:100%; }
+.picker>strong { margin-top:4px; font-size:20px; font-weight:620; letter-spacing:-.02em; }
+.picker>span { margin-top:3px; color:#8b8b87; font-size:12px; }
+.picker .done { width:auto; height:28px; padding:0 11px; margin-top:7px; color:#4b4b48; background:#f2f2ef; border-radius:999px; font-size:10px; font-weight:560; }
+.picker>p { margin:4px 0 0; color:#a13d34; font-size:10px; }
+.picker nav { display:flex; margin-top:9px; align-items:end; gap:9px; }
+.picker nav button { width:7px; height:7px; background:#c7c7c4; border-radius:50%; }
+.picker nav button[aria-current="true"] { background:#343432; transform:scale(1.25); }

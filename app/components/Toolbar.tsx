@@ -1,8 +1,9 @@
-import { ChevronLeft, ChevronRight, Ellipsis, LayoutGrid, List, ListFilter, Search, Share, SquarePen, Tag } from "lucide-react";
+import { ChevronLeft, ChevronRight, Ellipsis, LayoutGrid, List, ListFilter, Search, Share, Tag } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import type { BreadcrumbItem, Destination, SortMode, ViewMode } from "../types/filesystem";
 import { Breadcrumbs } from "./Breadcrumbs";
+import { ClientAssistantActions } from "./ClientAssistantActions";
 import styles from "./Toolbar.module.css";
 
 const viewModes: Array<{ mode: ViewMode; label: string; icon: typeof LayoutGrid }> = [
@@ -18,6 +19,8 @@ type ToolbarProps = {
   hasSelection: boolean;
   chatAvailable: boolean;
   chatOpen: boolean;
+  clientId?: string;
+  voiceOpen: boolean;
   query: string;
   sort: SortMode;
   viewMode: ViewMode;
@@ -28,6 +31,7 @@ type ToolbarProps = {
   onCreateClient: () => void;
   onCreateFolder: () => void;
   onChatToggle: () => void;
+  onVoiceToggle: () => void;
   onInspectorToggle: () => void;
   onShare: () => void;
   onQueryChange: (query: string) => void;
@@ -35,7 +39,7 @@ type ToolbarProps = {
   onViewModeChange: (mode: ViewMode) => void;
 };
 
-export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, hasSelection, chatAvailable, chatOpen, query, sort, viewMode, utilityView = false, onBack, onBreadcrumbNavigate, onForward, onCreateClient, onCreateFolder, onChatToggle, onInspectorToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
+export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, hasSelection, chatAvailable, chatOpen, clientId, query, sort, viewMode, voiceOpen, utilityView = false, onBack, onBreadcrumbNavigate, onForward, onCreateClient, onCreateFolder, onChatToggle, onVoiceToggle, onInspectorToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
   const canCreateFolder = destination.type === "folder";
 
   function closeMenu(event: MouseEvent<HTMLButtonElement>) {
@@ -49,6 +53,10 @@ export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, has
         <button aria-label="Forward" disabled={!canGoForward} onClick={onForward} type="button"><ChevronRight /></button>
       </nav>
       <Breadcrumbs className={styles.path} items={breadcrumbs} onNavigate={onBreadcrumbNavigate} />
+      {!utilityView ? <label className={styles.search}>
+        <Search aria-hidden="true" />
+        <input aria-label="Search Front Desk" onChange={(event) => onQueryChange(event.target.value)} placeholder="Search" type="search" value={query} />
+      </label> : null}
       {!utilityView ? <nav className={styles.tools} aria-label="View and filesystem actions">
         <span className={styles.viewModes}>
           {viewModes.map(({ mode, label, icon: Icon }) => (
@@ -65,7 +73,6 @@ export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, has
           </select>
         </label>
         <span className={styles.actions}>
-          {chatAvailable ? <button aria-label="Client chat" aria-pressed={chatOpen} onClick={onChatToggle} title="Client chat" type="button"><SquarePen /></button> : null}
           <button aria-label="Share" disabled={!hasSelection} onClick={onShare} title="Share" type="button"><Share /></button>
           <button aria-label="Tags" disabled={!hasSelection} onClick={onInspectorToggle} title="Tags" type="button"><Tag /></button>
           <details className={styles.more}>
@@ -77,10 +84,7 @@ export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, has
             </menu>
           </details>
         </span>
-        <label className={styles.search}>
-          <Search aria-hidden="true" />
-          <input aria-label="Search Front Desk" onChange={(event) => onQueryChange(event.target.value)} placeholder="Search" type="search" value={query} />
-        </label>
+        {chatAvailable && clientId ? <ClientAssistantActions chatOpen={chatOpen} clientId={clientId} onChatToggle={onChatToggle} onVoiceToggle={onVoiceToggle} voiceOpen={voiceOpen} /> : null}
       </nav> : null}
     </header>
   );

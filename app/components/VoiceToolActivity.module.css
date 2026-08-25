@@ -1,0 +1,4 @@
+.activity { position:absolute; top:calc(50% + 176px); padding:7px 10px; border-radius:999px; background:#f3f3f1; color:#5d5d59; font-size:11px; text-transform:capitalize; }
+.activity[data-status="running"] { animation:pulse 1.2s ease-in-out infinite; }
+.activity[data-status="error"] { color:#a5322d; }
+@keyframes pulse { 50% { opacity:.55; } }

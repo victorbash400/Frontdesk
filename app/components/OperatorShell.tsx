@@ -9,6 +9,7 @@ import { tagColors, type FileSystemNode, type SortMode, type ViewMode } from "..
 import type { OperatorAccount } from "../types/account";
 import { CreateItemDialog } from "./CreateItemDialog";
 import { ClientChatPanel } from "./ClientChatPanel";
+import { ClientVoicePanel } from "./ClientVoicePanel";
 import { ClientProfileEditor } from "./ClientProfileEditor";
 import { ExplorerContent } from "./ExplorerContent";
 import { Inspector } from "./Inspector";
@@ -28,6 +29,7 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
   const navigation = useNavigationHistory();
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
   const [openProfileId, setOpenProfileId] = useState<string>();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -60,7 +62,7 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
 
   function navigate(destination: Parameters<typeof navigation.navigate>[0]) {
     navigation.navigate(destination);
-    if (destination.type === "location") setChatOpen(false);
+    if (destination.type === "location") { setChatOpen(false); setVoiceOpen(false); }
     setSelectedId(undefined);
     setOpenProfileId(undefined);
     setContextMenu(undefined);
@@ -133,7 +135,7 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
     <main className={styles.shell} onKeyDown={handleKeyboard} style={tagVariables} tabIndex={-1}>
       <Sidebar account={account} destination={navigation.destination} onCreateClient={() => setDialog({ mode: "create-client" })} onNavigate={navigate} />
       <section className={styles.explorer}>
-        <Toolbar breadcrumbs={breadcrumbs} canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} chatAvailable={Boolean(client)} chatOpen={chatOpen} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={() => { navigation.back(); setOpenProfileId(undefined); }} onBreadcrumbNavigate={navigate} onChatToggle={() => setChatOpen((current) => !current)} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={() => { navigation.forward(); setOpenProfileId(undefined); }} onInspectorToggle={() => setInspectorOpen((current) => !current)} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} query={query} sort={sort} utilityView={utilityView} viewMode={viewMode} />
+        <Toolbar breadcrumbs={breadcrumbs} canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} chatAvailable={Boolean(client)} chatOpen={chatOpen} clientId={client?.id} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={() => { navigation.back(); setOpenProfileId(undefined); }} onBreadcrumbNavigate={navigate} onChatToggle={() => { setVoiceOpen(false); setChatOpen((current) => !current); }} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={() => { navigation.forward(); setOpenProfileId(undefined); }} onInspectorToggle={() => setInspectorOpen((current) => !current)} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} onVoiceToggle={() => { setChatOpen(false); setVoiceOpen((current) => !current); }} query={query} sort={sort} utilityView={utilityView} viewMode={viewMode} voiceOpen={voiceOpen} />
         <section className={styles.workspace}>
           <section className={styles.browser} onClick={() => setContextMenu(undefined)}>
             {navigation.destination.type === "location" && navigation.destination.location === "plugins" ? <PluginStore accountId={account.id} /> : null}
@@ -145,6 +147,7 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
           </section>
           {inspectorOpen && !utilityView ? <Inspector node={selectedNode} onToggleTag={(tag) => selectedNode && fileSystem.toggleTag(selectedNode.id, tag)} /> : null}
           {client ? <ClientChatPanel accountId={account.id} clientId={client.id} key={client.id} open={chatOpen} /> : null}
+          {client ? <ClientVoicePanel accountId={account.id} clientId={client.id} key={`voice-${client.id}`} open={voiceOpen} /> : null}
         </section>
       </section>
       <CreateItemDialog error={dialogError} initialName={dialog?.mode === "rename" ? dialog.node?.name : ""} onCancel={() => { setDialog(undefined); setDialogError(undefined); }} onNameChange={() => setDialogError(undefined)} onSubmit={submitDialog} open={Boolean(dialog)} submitLabel={dialog?.mode === "rename" ? "Rename" : dialog?.mode === "create-client" ? "Create Client" : "Create Folder"} title={dialog?.mode === "rename" ? "Rename Item" : dialog?.mode === "create-client" ? "New Client" : "New Folder"} />

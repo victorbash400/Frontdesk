@@ -1,0 +1,24 @@
+.wrapper { position: relative; }
+.actions {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 18px;
+  background: #f9f9f9;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 7%), inset 0 0 0 1px rgb(255 255 255 / 82%);
+}
+
+.actions button {
+  width: 36px;
+  height: 34px;
+  padding: 0;
+  border-radius: 0;
+}
+
+.actions img {
+  width: 18px;
+  height: 18px;
+  opacity: .38;
+}
+.actions button { position: relative; }
+.actions button small { position: absolute; top: 3px; right: 3px; display: grid; min-width: 13px; height: 13px; padding: 0 3px; place-items: center; border-radius: 7px; background: #30302e; color: #fff; font-size: 8px; }
