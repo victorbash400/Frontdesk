@@ -16,6 +16,7 @@ backend/client_secret_*.json
 backend/*.db
 backend/.sessions/
 backend/.browser-artifacts/
+backend/.playwright-mcp/
 __pycache__/
 *.py[cod]
 

@@ -1,0 +1,11 @@
+.git
+.next
+node_modules
+backend/.env
+backend/.venv
+backend/*.db
+backend/.browser-artifacts
+backend/.playwright-mcp
+backend/__pycache__
+**/__pycache__
+*.pyc

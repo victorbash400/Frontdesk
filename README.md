@@ -7,10 +7,12 @@ Front Desk is a client-work workspace with direct Gemini chat, visible model rea
 - Next.js 16, React 19, Auth.js, and CSS Modules
 - FastAPI, SQLAlchemy, and SQLite/PostgreSQL-compatible account storage
 - Persistent account/chat-scoped ADK sessions through `DatabaseSessionService`
-- Google ADK with `gemini-3.6-flash` on Vertex AI
-- Server-sent events for chat streaming; no polling
+- Persisted client goals, assignments, clarification inboxes, and scheduled wakes in SQLite or PostgreSQL
+- Google ADK with `gemini-3-flash-preview` on Vertex AI
+- Separate Gemini Live voice sessions using `gemini-3.1-flash-live-preview`
+- Server-sent events for chat and goal updates; no polling
 - Google Cloud Storage for future client artifacts
-- Account-scoped Google Workspace OAuth foundation
+- Account-scoped Gmail, Drive, and Google Docs tools through Google Workspace OAuth
 
 ## Local setup
 
@@ -22,4 +24,4 @@ Front Desk is a client-work workspace with direct Gemini chat, visible model rea
 
 The demo account is `demo@front-desk.local` with password `front-desk-demo`.
 
-Workspace tools and voice are intentionally not included in this phase. Gmail, Drive, and Calendar share the Google Workspace connection that those tools will use next.
+The current goal worker runs locally inside the FastAPI process and is structured for a later Cloud Run deployment. A production deployment still needs an external durable dispatch service before goal execution can survive instance termination or scale-to-zero.
