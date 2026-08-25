@@ -1,7 +1,6 @@
 "use client";
 
-import Image from "next/image";
-import { Bell, SquarePen } from "lucide-react";
+import { AudioLines, Bell, SquarePen } from "lucide-react";
 import { useState } from "react";
 
 import { useClientNotifications } from "../hooks/useClientNotifications";
@@ -26,7 +25,7 @@ export function ClientAssistantActions({ chatOpen, clientId, onChatToggle, onVoi
         <SquarePen aria-hidden="true" />
       </button>
       <button aria-label="Client voice" aria-pressed={voiceOpen} onClick={onVoiceToggle} title="Client voice" type="button">
-        <Image alt="" aria-hidden="true" height={18} src="/voice-recognition-svgrepo-com.svg" width={18} />
+        <AudioLines aria-hidden="true" />
       </button>
       <button aria-label="Client notifications" aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((value) => !value); void notifications.refresh(); }} title="Client notifications" type="button"><Bell aria-hidden="true" />{openCount ? <small>{openCount}</small> : null}</button></span>
       {notificationsOpen ? <ClientNotificationPanel error={notifications.error} notifications={notifications.notifications} onAnswer={notifications.answer} /> : null}
