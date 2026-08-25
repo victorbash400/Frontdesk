@@ -1,6 +1,6 @@
-.dialog { width: min(520px, calc(100vw - 32px)); height: min(720px, calc(100svh - 40px)); padding: 0; overflow: hidden; border: 0; border-radius: 16px; background: #fbfbfa; box-shadow: 0 20px 64px rgb(0 0 0 / 22%); }
+.dialog { width: min(680px, calc(100vw - 32px)); max-height: calc(100svh - 40px); padding: 0; overflow: hidden; border: 0; border-radius: 16px; background: #fbfbfa; box-shadow: 0 20px 64px rgb(0 0 0 / 22%); }
 .dialog::backdrop { background: rgb(0 0 0 / 13%); }
-.dialog form { display: grid; height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
+.dialog form { display: grid; max-height: calc(100svh - 40px); grid-template-rows: auto minmax(0, 1fr) auto; }
 .dialog h2 { margin: 0; padding: 20px 20px 16px; font-size: 15px; font-weight: 620; }
 .body { min-height: 0; padding: 0 20px 20px; overflow-y: auto; }
 .field { display: block; margin-top: 13px; color: #6f6f6b; font-size: 11px; }

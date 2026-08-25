@@ -7,6 +7,7 @@ import { useGoals } from "../hooks/useGoals";
 import { usePluginDirectory } from "../hooks/usePluginDirectory";
 import { useSkillsLibrary } from "../hooks/useSkillsLibrary";
 import { pluginDirectory } from "../lib/pluginDirectory";
+import { skillCatalog } from "../lib/skillCatalog";
 import type { FileSystemNode } from "../types/filesystem";
 import type { GoalStatus } from "../types/goal";
 import { CreateGoalDialog } from "./CreateGoalDialog";
@@ -24,12 +25,12 @@ type GoalsWorkspaceProps = {
 const filters: Array<{ id: StatusFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "active", label: "Active" },
-  { id: "ready", label: "Ready" },
+  { id: "paused", label: "Paused" },
   { id: "completed", label: "Completed" },
 ];
 
 export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
-  const { createGoal, error, goals, loaded, setGoalStatus, updateGoal } = useGoals(accountId);
+  const { createGoal, deleteGoal, error, goals, liveUpdates, loaded, setGoalStatus } = useGoals();
   const plugins = usePluginDirectory(accountId);
   const skills = useSkillsLibrary(accountId);
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -39,6 +40,13 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
   const [creating, setCreating] = useState(false);
   const effectiveClientId = selectedClientId === "all" ? undefined : selectedClientId;
   const availablePlugins = useMemo(() => pluginDirectory.filter((plugin) => plugins.enabledIds.has(plugin.id)), [plugins.enabledIds]);
+  const availableSkills = useMemo(() => {
+    const savedIds = new Set(skills.skills.map((skill) => skill.id));
+    const pluginSkills = skillCatalog
+      .filter((skill) => skill.pluginId && plugins.enabledIds.has(skill.pluginId) && !savedIds.has(skill.id))
+      .map((skill) => ({ ...skill, updatedAt: "" }));
+    return [...skills.skills, ...pluginSkills];
+  }, [plugins.enabledIds, skills.skills]);
   const workspaceError = error ?? plugins.error ?? skills.error;
   const visible = useMemo(() => {
     const clientIds = new Set(clients.map((client) => client.id));
@@ -66,10 +74,10 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
       <section className={styles.panel}>
         <header><span>{panelTitle}</span><small>{visible.length}</small></header>
         <section className={styles.sheet}>
-          <GoalList clients={clients} goals={visible} onSave={updateGoal} onSelect={setSelectedGoalId} onStatusChange={setGoalStatus} plugins={availablePlugins} selectedId={selectedGoalId} skills={skills.skills} />
+          <GoalList clients={clients} goals={visible} liveUpdates={liveUpdates} onDelete={async (id) => { await deleteGoal(id); setSelectedGoalId(undefined); }} onSelect={setSelectedGoalId} onStatusChange={setGoalStatus} plugins={availablePlugins} selectedId={selectedGoalId} />
         </section>
       </section>
-      <CreateGoalDialog clients={clients} onCancel={() => setCreating(false)} onSubmit={(goalClientId, text, skillIds, pluginIds) => { const goal = createGoal(goalClientId, text, skillIds, pluginIds); setSelectedGoalId(goal.id); setStatus("active"); setCreating(false); }} open={creating} plugins={availablePlugins} skills={skills.skills} />
+      <CreateGoalDialog clients={clients} onCancel={() => setCreating(false)} onSubmit={async (goalClientId, text, skillIds, pluginIds) => { const goal = await createGoal(goalClientId, text, skillIds, pluginIds); setSelectedGoalId(goal.id); setStatus("active"); setCreating(false); }} open={creating} plugins={availablePlugins} skills={availableSkills} />
     </section>
   );
 }

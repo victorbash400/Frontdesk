@@ -14,7 +14,7 @@ type CreateGoalDialogProps = {
   skills: OperatorSkill[];
   open: boolean;
   onCancel: () => void;
-  onSubmit: (clientId: string, text: string, skillIds: string[], pluginIds: string[]) => void;
+  onSubmit: (clientId: string, text: string, skillIds: string[], pluginIds: string[]) => Promise<void>;
 };
 
 export function CreateGoalDialog({ clients, open, plugins, skills, onCancel, onSubmit }: CreateGoalDialogProps) {
@@ -38,11 +38,11 @@ export function CreateGoalDialog({ clients, open, plugins, skills, onCancel, onS
     } else if (!open && dialog.open) dialog.close();
   }, [clients, open]);
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     if (!selectedClientId || !text.trim()) return;
     try {
-      onSubmit(selectedClientId, text.trim(), skillIds, pluginIds);
+      await onSubmit(selectedClientId, text.trim(), skillIds, pluginIds);
       setError(undefined);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not create this goal.");

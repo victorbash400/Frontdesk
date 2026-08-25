@@ -1,7 +1,6 @@
 import type { FileSystemNode } from "../types/filesystem";
-import type { GoalStatus, OperatorGoal } from "../types/goal";
+import type { GoalLiveUpdate, GoalStatus, OperatorGoal } from "../types/goal";
 import type { PluginDefinition } from "../lib/pluginDirectory";
-import type { OperatorSkill } from "../types/skill";
 import { GoalDetail } from "./GoalDetail";
 import { GoalRow } from "./GoalRow";
 import styles from "./GoalList.module.css";
@@ -11,20 +10,18 @@ type GoalListProps = {
   selectedId?: string;
   goals: OperatorGoal[];
   plugins: PluginDefinition[];
-  skills: OperatorSkill[];
+  liveUpdates: Record<string, GoalLiveUpdate>;
   onSelect: (id?: string) => void;
+  onDelete: (id: string) => Promise<void>;
   onStatusChange: (id: string, status: GoalStatus) => void;
-  onSave: (id: string, update: Pick<OperatorGoal, "text" | "skillIds" | "pluginIds">) => void;
 };
 
-export function GoalList({ clients, goals, plugins, selectedId, skills, onSelect, onSave, onStatusChange }: GoalListProps) {
-  const clientNames = new Map(clients.map((client) => [client.id, client.name]));
+export function GoalList({ clients, goals, liveUpdates, plugins, selectedId, onDelete, onSelect, onStatusChange }: GoalListProps) {
   return (
     <section aria-label="Goal list" className={styles.list} data-empty={!goals.length}>
       {goals.length ? goals.map((goal) => {
-        const clientName = clientNames.get(goal.clientId) ?? "Unknown Client";
         const expanded = goal.id === selectedId;
-        return <GoalRow clientName={clientName} detail={<GoalDetail clientName={clientName} goal={goal} onSave={(update) => onSave(goal.id, update)} onStatusChange={(status) => onStatusChange(goal.id, status)} plugins={plugins} skills={skills} />} expanded={expanded} goal={goal} key={goal.id} onSelect={() => onSelect(expanded ? undefined : goal.id)} />;
+        return <GoalRow detail={<GoalDetail goal={goal} liveUpdate={liveUpdates[goal.id]} onDelete={() => onDelete(goal.id)} onStatusChange={(status) => onStatusChange(goal.id, status)} plugins={plugins} />} expanded={expanded} goal={goal} key={goal.id} liveUpdate={liveUpdates[goal.id]} onSelect={() => onSelect(expanded ? undefined : goal.id)} />;
       }) : <p>{clients.length ? "Goals in this view will appear here" : "Create a client before adding goals"}</p>}
     </section>
   );

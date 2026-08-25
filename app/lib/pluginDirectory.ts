@@ -2,7 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import { Blocks, BookOpenText, Bot, Building2, CircleDot, FileText, FolderGit2, GitBranch, GitPullRequest, Hash, ListTodo, MessageCircle, MessageSquareText, PanelsTopLeft } from "lucide-react";
 
 
-export type PluginGroup = "productivity" | "developer" | "communication";
+export type PluginGroup = "productivity" | "developer" | "communication" | "automation";
 
 export type PluginDefinition = {
   id: string;
@@ -59,13 +59,14 @@ export const pluginDirectory: PluginDefinition[] = [
     { id: "slack.channels", name: "Channels", description: "Search connected Slack channels", icon: Hash },
     { id: "slack.messages", name: "Messages", description: "Read and work with Slack messages", icon: MessageSquareText },
   ] },
-  { id: "browser-use", name: "Browser Use", description: "Work across the web in a shared browser tab", group: "developer", color: "#30302e", icon: PanelsTopLeft, logo: "/browser-settings-svgrepo-com.svg", permissions: [] },
+  { id: "browser-use", name: "Browser Use", description: "Control Chrome through the Front Desk extension", group: "automation", color: "#30302e", icon: PanelsTopLeft, logo: "/browser-settings-svgrepo-com.svg", permissions: ["Use every normal Chrome tab and window", "Open, navigate, inspect, and close tabs", "Use Playwright browser, network, storage, download, and DevTools capabilities"] },
 ];
 
 export const pluginGroups: Array<{ id: PluginGroup; label: string }> = [
   { id: "productivity", label: "Productivity" },
   { id: "developer", label: "Developer Tools" },
   { id: "communication", label: "Communication" },
+  { id: "automation", label: "Computer Automation" },
 ];
 
 export function pluginById(pluginId: string) {
