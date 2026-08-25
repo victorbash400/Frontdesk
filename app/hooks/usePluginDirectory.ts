@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { authenticatedFetch } from "../lib/authenticatedFetch";
 import type { PluginState } from "../lib/pluginDirectory";
 
 
@@ -14,7 +15,7 @@ export function usePluginDirectory(accountId: string) {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/plugins", { cache: "no-store" });
+      const response = await authenticatedFetch("/api/plugins", { cache: "no-store" });
       const payload = await response.json() as PluginSnapshot & { error?: string };
       if (!response.ok) throw new Error(payload.error || "Could not read plugins");
       setPlugins(payload.plugins);
@@ -42,7 +43,7 @@ export function usePluginDirectory(accountId: string) {
 
   const request = useCallback(async (pluginId: string, action: "install" | "remove" | "disconnect") => {
     const path = action === "disconnect" ? `/api/plugins/${encodeURIComponent(pluginId)}/connect` : `/api/plugins/${encodeURIComponent(pluginId)}`;
-    const response = await fetch(path, { method: action === "install" ? "POST" : "DELETE" });
+    const response = await authenticatedFetch(path, { method: action === "install" ? "POST" : "DELETE" });
     const payload = await response.json() as PluginSnapshot & { error?: string };
     if (!response.ok) throw new Error(payload.error || `Could not ${action} plugin`);
     setPlugins(payload.plugins);
@@ -50,7 +51,7 @@ export function usePluginDirectory(accountId: string) {
   }, []);
 
   const connect = useCallback(async (pluginId: string) => {
-    const response = await fetch(`/api/plugins/${encodeURIComponent(pluginId)}/connect`, { method: "POST" });
+    const response = await authenticatedFetch(`/api/plugins/${encodeURIComponent(pluginId)}/connect`, { method: "POST" });
     const payload = await response.json() as { authorization_url?: string; error?: string };
     if (!response.ok || !payload.authorization_url) throw new Error(payload.error || "Could not start plugin sign-in");
     const authorizationTab = window.open(payload.authorization_url, "_blank");
@@ -59,7 +60,7 @@ export function usePluginDirectory(accountId: string) {
   }, []);
 
   const setPermission = useCallback(async (pluginId: string, permissionId: string, enabled: boolean) => {
-    const response = await fetch(`/api/plugins/${encodeURIComponent(pluginId)}/permissions/${encodeURIComponent(permissionId)}`, {
+    const response = await authenticatedFetch(`/api/plugins/${encodeURIComponent(pluginId)}/permissions/${encodeURIComponent(permissionId)}`, {
       body: JSON.stringify({ enabled }),
       headers: { "Content-Type": "application/json" },
       method: "PUT",

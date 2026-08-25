@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { authenticatedFetch } from "../lib/authenticatedFetch";
 
 export type WorkspacePermission = { id: string; name: string; description: string; enabled: boolean };
 type ConnectionState = {
@@ -29,7 +30,7 @@ export function useGoogleWorkspaceConnection() {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/plugins/google", { cache: "no-store" });
+      const response = await authenticatedFetch("/api/plugins/google", { cache: "no-store" });
       const payload = await response.json() as ConnectionState & { error?: string };
       if (!response.ok) throw new Error(payload.error || "Could not read the Google Workspace connection");
       setState(payload);
@@ -54,7 +55,7 @@ export function useGoogleWorkspaceConnection() {
   }, [refresh]);
 
   const connect = useCallback(async () => {
-    const response = await fetch("/api/plugins/google", { method: "POST" });
+    const response = await authenticatedFetch("/api/plugins/google", { method: "POST" });
     const payload = await response.json() as { authorization_url?: string; error?: string };
     if (!response.ok || !payload.authorization_url) throw new Error(payload.error || "Could not start Google sign-in");
     const authorizationTab = window.open(payload.authorization_url, "_blank");
@@ -62,14 +63,14 @@ export function useGoogleWorkspaceConnection() {
   }, []);
 
   const disconnect = useCallback(async () => {
-    const response = await fetch("/api/plugins/google", { method: "DELETE" });
+    const response = await authenticatedFetch("/api/plugins/google", { method: "DELETE" });
     const payload = await response.json() as { error?: string };
     if (!response.ok) throw new Error(payload.error || "Could not disconnect Google Workspace");
     await refresh();
   }, [refresh]);
 
   const setPermission = useCallback(async (permissionId: string, enabled: boolean) => {
-    const response = await fetch(`/api/plugins/google/permissions/${encodeURIComponent(permissionId)}`, {
+    const response = await authenticatedFetch(`/api/plugins/google/permissions/${encodeURIComponent(permissionId)}`, {
       body: JSON.stringify({ enabled }),
       headers: { "Content-Type": "application/json" },
       method: "PUT",

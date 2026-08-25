@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { authenticatedFetch } from "../lib/authenticatedFetch";
 
 export type GitHubRepository = {
   full_name: string;
@@ -22,7 +23,7 @@ export function useGitHubRepositoryAccess(onSaved: () => void) {
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch("/api/plugins/github/repositories", { cache: "no-store" });
+      const response = await authenticatedFetch("/api/plugins/github/repositories", { cache: "no-store" });
       const payload = await response.json() as RepositoryAccess & { error?: string };
       if (!response.ok) throw new Error(payload.error || "Could not load GitHub repositories");
       setRepositories(payload.repositories);
@@ -43,7 +44,7 @@ export function useGitHubRepositoryAccess(onSaved: () => void) {
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      const response = await fetch("/api/plugins/github/repositories", {
+      const response = await authenticatedFetch("/api/plugins/github/repositories", {
         method: "PUT",
         body: JSON.stringify({ repositories: [...selected] }),
         headers: { "Content-Type": "application/json" },

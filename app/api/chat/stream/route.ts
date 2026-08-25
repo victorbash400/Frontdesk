@@ -1,9 +1,10 @@
 import { auth } from "@/auth";
+import { authenticationRequiredResponse } from "@/app/lib/authResponses";
 
 
 export async function POST(request: Request) {
   const session = await auth();
-  if (!session?.user?.id) return Response.json({ error: "Authentication is required" }, { status: 401 });
+  if (!session?.user?.id) return authenticationRequiredResponse();
 
   const internalSecret = process.env.FRONT_DESK_INTERNAL_SECRET;
   if (!internalSecret) return Response.json({ error: "Front Desk chat is not configured" }, { status: 500 });

@@ -1,9 +1,10 @@
 import { auth } from "@/auth";
+import { authenticationRequiredResponse } from "./authResponses";
 
 
 export async function pluginBackend(path: string, init: RequestInit = {}) {
   const session = await auth();
-  if (!session?.user?.id) return Response.json({ error: "Authentication is required" }, { status: 401 });
+  if (!session?.user?.id) return authenticationRequiredResponse();
   const internalSecret = process.env.FRONT_DESK_INTERNAL_SECRET;
   if (!internalSecret) return Response.json({ error: "Front Desk plugins are not configured" }, { status: 500 });
   const backendUrl = process.env.FRONT_DESK_BACKEND_URL || "http://127.0.0.1:8000";

@@ -1,4 +1,5 @@
 import type { ClientChatStreamEvent } from "../components/clientChatTypes";
+import { authenticatedFetch } from "./authenticatedFetch";
 
 
 type StreamClientChatOptions = {
@@ -11,7 +12,7 @@ type StreamClientChatOptions = {
 };
 
 export async function streamClientChat(options: StreamClientChatOptions) {
-  const response = await fetch("/api/chat/stream", {
+  const response = await authenticatedFetch("/api/chat/stream", {
     body: JSON.stringify({ chat_id: options.chatId, client_id: options.clientId, create_title: options.createTitle, message: options.message }),
     headers: { "Content-Type": "application/json" },
     method: "POST",

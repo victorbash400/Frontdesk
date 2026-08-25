@@ -1,6 +1,6 @@
 "use client";
 
-import { signIn } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
@@ -41,6 +41,12 @@ export function AuthForm() {
       const result = await signIn("credentials", { email: submittedEmail, password: submittedPassword, redirect: false });
       if (result?.error === "CredentialsSignin") throw new Error("Email or password is incorrect");
       if (result?.error) throw new Error("Front Desk account service is unavailable");
+      const sessionResponse = await fetch("/api/auth/session", { cache: "no-store" });
+      const session = await sessionResponse.json() as { user?: { id?: string } };
+      if (!sessionResponse.ok || !session.user?.id) {
+        await signOut({ redirect: false });
+        throw new Error("Front Desk could not establish your session");
+      }
       router.replace("/");
       router.refresh();
     } catch (reason) {
