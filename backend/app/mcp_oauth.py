@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
-import httpx2
 import jwt
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
@@ -80,7 +79,33 @@ PROVIDERS = {
     "slack": MCPProvider(
         "slack",
         "https://mcp.slack.com/mcp",
-        "",
+        " ".join((
+            "search:read.public",
+            "search:read.private",
+            "search:read.mpim",
+            "search:read.im",
+            "search:read.files",
+            "search:read.users",
+            "files:read",
+            "emoji:read",
+            "chat:write",
+            "channels:history",
+            "groups:history",
+            "mpim:history",
+            "im:history",
+            "channels:write",
+            "groups:write",
+            "im:write",
+            "mpim:write",
+            "reactions:write",
+            "canvases:read",
+            "canvases:write",
+            "users:read",
+            "users:read.email",
+            "channels:read",
+            "groups:read",
+            "mpim:read",
+        )),
         "slack_client_id",
         "slack_client_secret",
         "A Slack workspace admin must approve Front Desk before connecting.",
@@ -313,15 +338,27 @@ async def _client_information(provider: MCPProvider, discovery: dict[str, str]) 
 
 
 async def _verify_connection(provider: MCPProvider, access_token: str) -> int:
-    async with httpx2.AsyncClient(headers={"Authorization": f"Bearer {access_token}"}, timeout=25) as client:
-        async with streamable_http_client(provider.server_url, http_client=client) as streams:
-            read_stream, write_stream = streams
-            async with ClientSession(read_stream, write_stream) as mcp_session:
-                await mcp_session.initialize()
-                tools = await mcp_session.list_tools()
-                if provider.id == "atlassian":
-                    await _verify_atlassian_tools(mcp_session, {tool.name for tool in tools.tools})
-                return len(tools.tools)
+    try:
+        async with httpx.AsyncClient(headers={"Authorization": f"Bearer {access_token}"}, timeout=25) as client:
+            async with streamable_http_client(provider.server_url, http_client=client) as streams:
+                read_stream, write_stream, _ = streams
+                async with ClientSession(read_stream, write_stream) as mcp_session:
+                    await mcp_session.initialize()
+                    tools = await mcp_session.list_tools()
+                    if provider.id == "atlassian":
+                        await _verify_atlassian_tools(mcp_session, {tool.name for tool in tools.tools})
+                    return len(tools.tools)
+    except BaseExceptionGroup as error:
+        detail = _first_exception(error)
+        message = str(detail) or repr(detail)
+        raise RuntimeError(f"{provider.id.title()} MCP verification failed ({type(detail).__name__}): {message}") from detail
+
+
+def _first_exception(error: BaseExceptionGroup) -> Exception:
+    detail: BaseException = error
+    while isinstance(detail, BaseExceptionGroup):
+        detail = detail.exceptions[0]
+    return detail if isinstance(detail, Exception) else RuntimeError(str(detail))
 
 
 async def _verify_atlassian_tools(mcp_session: ClientSession, tool_names: set[str]) -> None:

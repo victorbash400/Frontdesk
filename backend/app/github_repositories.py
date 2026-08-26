@@ -1,11 +1,9 @@
-import json
-
 import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .models import GitHubRepositoryAccess, PluginConnection
-from .secret_store import decrypt_secret
+from tools.external_plugins import connected_external_plugin_access_token
 
 
 GITHUB_API = "https://api.github.com"
@@ -16,7 +14,7 @@ GITHUB_HEADERS = {
 
 
 async def repository_access(session: Session, account_id: str) -> dict[str, object]:
-    token = _access_token(session, account_id)
+    token = await _access_token(session, account_id)
     repositories = await _repositories(token)
     selected = set(session.scalars(select(GitHubRepositoryAccess.full_name).where(
         GitHubRepositoryAccess.account_id == account_id,
@@ -28,7 +26,7 @@ async def repository_access(session: Session, account_id: str) -> dict[str, obje
 
 
 async def set_repository_access(session: Session, account_id: str, selected: list[str]) -> dict[str, object]:
-    token = _access_token(session, account_id)
+    token = await _access_token(session, account_id)
     repositories = await _repositories(token)
     available = {repository["full_name"] for repository in repositories}
     requested = set(selected)
@@ -52,18 +50,14 @@ def repository_is_allowed(session: Session, account_id: str, owner: str, reposit
     return any(candidate.casefold() == full_name for candidate in allowed)
 
 
-def _access_token(session: Session, account_id: str) -> str:
+async def _access_token(session: Session, account_id: str) -> str:
     connection = session.scalar(select(PluginConnection).where(
         PluginConnection.account_id == account_id,
         PluginConnection.plugin_id == "github",
     ))
     if not connection:
         raise ValueError("Connect GitHub before choosing repositories.")
-    credentials = json.loads(decrypt_secret(connection.credentials))
-    token = credentials.get("tokens", {}).get("access_token")
-    if not isinstance(token, str) or not token:
-        raise RuntimeError("The GitHub connection does not contain an access token.")
-    return token
+    return await connected_external_plugin_access_token(account_id, "github")
 
 
 async def _repositories(access_token: str) -> list[dict[str, object]]:

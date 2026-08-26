@@ -82,6 +82,18 @@ def test_atlassian_uses_authv2_for_oauth_and_mcp_for_tools() -> None:
     assert "read:space:confluence" in provider.scopes.split()
 
 
+def test_slack_requests_the_complete_mcp_scope_set() -> None:
+    scopes = set(mcp_oauth.PROVIDERS["slack"].scopes.split())
+
+    assert {"search:read.public", "chat:write", "channels:write", "canvases:write", "users:read.email"} <= scopes
+
+
+def test_first_exception_unwraps_nested_task_groups() -> None:
+    detail = RuntimeError("Slack rejected the MCP request")
+
+    assert mcp_oauth._first_exception(ExceptionGroup("outer", [ExceptionGroup("inner", [detail])])) is detail
+
+
 def test_first_atlassian_cloud_id_reads_resource_list() -> None:
     assert mcp_oauth._first_atlassian_cloud_id('[{"id":"cloud-id","url":"https://example.atlassian.net"}]') == "cloud-id"
 

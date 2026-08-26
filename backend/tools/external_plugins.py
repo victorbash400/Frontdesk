@@ -43,6 +43,11 @@ async def connected_external_plugin_toolset(account_id: str, plugin_id: str) -> 
     return toolset
 
 
+async def connected_external_plugin_access_token(account_id: str, plugin_id: str) -> str:
+    _, credentials = await _connection_credentials(account_id, plugin_id)
+    return str(credentials["tokens"]["access_token"])
+
+
 async def _connection_credentials(account_id: str, plugin_id: str) -> tuple[PluginConnection, dict[str, Any]]:
     with SessionLocal() as session:
         connection = session.scalar(select(PluginConnection).where(
