@@ -24,6 +24,19 @@
       "js": ["lib/content.js"],
       "run_at": "document_start",
       "all_frames": false
+    },
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["lib/meetRelay.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["lib/meetAgent.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [

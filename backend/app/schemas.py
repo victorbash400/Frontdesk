@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-NodeKind = Literal["client", "folder", "audio", "email", "document", "request", "note"]
+NodeKind = Literal["client", "folder", "profile", "task", "audio", "email", "document", "request", "note"]
 
 
 class AccountCreate(BaseModel):
@@ -31,9 +31,30 @@ class ChatRequest(BaseModel):
     create_title: bool = False
 
 
+class GoalsChatRequest(BaseModel):
+    chat_id: str = Field(min_length=1, max_length=128)
+    message: str = Field(min_length=1, max_length=20_000)
+    create_title: bool = False
+
+
 class VoiceTicketRequest(BaseModel):
     client_id: str = Field(min_length=1, max_length=128)
     session_id: str = Field(min_length=1, max_length=128)
+
+
+class MeetingCreate(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128)
+    client_email: str = Field(min_length=3, max_length=255)
+    title: str = Field(min_length=1, max_length=255)
+    start_time: datetime
+    end_time: datetime
+    goal_id: str | None = Field(default=None, max_length=36)
+    description: str = Field(default="", max_length=20_000)
+
+
+class MeetingAgentTicketRequest(BaseModel):
+    voice: str = Field(default="Kore", min_length=1, max_length=32)
+    language: str = Field(default="en", min_length=2, max_length=8)
 
 
 class GoalCreate(BaseModel):
@@ -96,6 +117,21 @@ class NodeRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FileSystemNodeSync(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    parent_id: str | None = Field(default=None, max_length=128)
+    name: str = Field(min_length=1, max_length=255)
+    kind: NodeKind
+    shared: bool = False
+    needs_attention: bool = False
+    trashed_at: datetime | None = None
+    content: str | None = Field(default=None, max_length=200_000)
+
+
+class FileSystemSync(BaseModel):
+    nodes: list[FileSystemNodeSync] = Field(max_length=10_000)
 
 
 class HealthRead(BaseModel):

@@ -17,6 +17,7 @@
 import { debugLog } from './relayConnection';
 import { PendingConnections } from './pendingConnection';
 import { ConnectedBrowser, isNonDebuggableUrl } from './connectedTabGroup';
+import { relayDecision, validRelayIdentity, type MeetRelayIdentity } from './meetIdentity';
 
 type PageMessage = {
   type: 'connectionRequested';
@@ -99,7 +100,7 @@ class PlaywrightExtension {
       const browser = new ConnectedBrowser(connection, clientName, returnTabId);
       browser.onclose = () => this._connections.delete(id);
       this._connections.set(id, browser);
-      const selectedTab = await this._initialTab(selectorTabId);
+      const selectedTab = await this._initialTab(selectorTabId, returnTabId);
       await browser.initialize(selectedTab);
       await chrome.tabs.remove(selectorTabId).catch(() => {});
     } catch (error: any) {
@@ -108,13 +109,14 @@ class PlaywrightExtension {
     }
   }
 
-  private async _initialTab(selectorTabId: number): Promise<chrome.tabs.Tab> {
+  private async _initialTab(selectorTabId: number, returnTabId: number | undefined): Promise<chrome.tabs.Tab> {
     const selectorTab = await chrome.tabs.get(selectorTabId);
+    const returnTab = returnTabId === undefined ? undefined : await chrome.tabs.get(returnTabId).catch(() => undefined);
+    const frontDeskUrl = returnTab?.url && /^https?:/.test(returnTab.url) ? new URL("/browser-bridge", returnTab.url).toString() : undefined;
+    if (!frontDeskUrl)
+      throw new Error('Front Desk must be open before Browser Use can connect.');
     return chrome.tabs.create({
-      // Playwright cannot navigate an extension-created about:blank target:
-      // Chrome treats it as extension-owned and rejects Page.navigate. Start
-      // on a normal permitted page so the first browser_navigate can reuse it.
-      url: 'https://example.com/',
+      url: frontDeskUrl,
       active: false,
       windowId: selectorTab.windowId,
       index: selectorTab.index + 1,
@@ -160,3 +162,101 @@ class PlaywrightExtension {
 }
 
 new PlaywrightExtension();
+
+type ActiveMeetRelay = MeetRelayIdentity & { port: chrome.runtime.Port; socket: WebSocket };
+const meetRelays = new Map<string, ActiveMeetRelay>();
+chrome.tabs.onRemoved.addListener(tabId => {
+  for (const [meetingId, relay] of meetRelays) {
+    if (relay.tabId !== tabId)
+      continue;
+    relay.socket.close(1000, 'Meet tab closed');
+    meetRelays.delete(meetingId);
+  }
+});
+
+chrome.runtime.onConnect.addListener(port => {
+  if (port.name !== 'front-desk-meet')
+    return;
+  const tabId = port.sender?.tab?.id;
+  let socket: WebSocket | undefined;
+  port.onMessage.addListener(message => {
+    if (message.kind === 'connect' && typeof message.url === 'string') {
+      const identity = { meetingId: message.meetingId, runtimeId: message.runtimeId, bridgeId: message.bridgeId, tabId };
+      if (!validRelayIdentity(identity)) {
+        port.postMessage({ kind: 'rejected', reason: 'Meet relay identity is incomplete.' });
+        return;
+      }
+      const current = meetRelays.get(identity.meetingId);
+      if (current) {
+        const decision = relayDecision(current, identity);
+        if (decision === 'reject-duplicate-tab') {
+          port.postMessage({ kind: 'rejected', reason: 'This meeting runtime already owns another Chrome tab.' });
+          void chrome.tabs.remove(identity.tabId);
+          return;
+        }
+        current.socket.close(4001, decision === 'replace-runtime' ? 'Meeting runtime replaced' : 'Bridge transport replaced');
+        if (decision === 'replace-runtime')
+          void chrome.tabs.remove(current.tabId);
+      }
+      socket?.close(4001, 'Bridge transport replaced');
+      const relaySocket = new WebSocket(message.url);
+      socket = relaySocket;
+      const relay: ActiveMeetRelay = { ...identity, port, socket: relaySocket };
+      meetRelays.set(identity.meetingId, relay);
+      relaySocket.binaryType = 'arraybuffer';
+      relaySocket.addEventListener('open', () => {
+        if (meetRelays.get(identity.meetingId)?.socket !== relaySocket)
+          return;
+        relaySocket.send(JSON.stringify({ type: 'bridge_registered', ...identity, tabId: String(identity.tabId) }));
+        port.postMessage({ kind: 'open', tabId: identity.tabId });
+      });
+      relaySocket.addEventListener('message', event => {
+        if (meetRelays.get(identity.meetingId)?.socket !== relaySocket)
+          return;
+        if (event.data instanceof ArrayBuffer)
+          port.postMessage({ kind: 'message', binary: bytesToBase64(new Uint8Array(event.data)) });
+        else
+          port.postMessage({ kind: 'message', text: String(event.data) });
+      });
+      relaySocket.addEventListener('close', event => {
+        if (meetRelays.get(identity.meetingId)?.socket !== relaySocket)
+          return;
+        meetRelays.delete(identity.meetingId);
+        port.postMessage({ kind: 'close', code: event.code, reason: event.reason });
+      });
+      return;
+    }
+    if (message.kind === 'close') {
+      socket?.close(message.code, message.reason);
+      if (tabId !== undefined && message.reason === 'Meeting complete')
+        void chrome.tabs.remove(tabId);
+      return;
+    }
+    if (message.kind === 'message' && socket?.readyState === WebSocket.OPEN) {
+      if (message.binary) {
+        const bytes = base64ToBytes(message.binary);
+        socket.send(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+      } else {
+        socket.send(message.text || '');
+      }
+    }
+  });
+  port.onDisconnect.addListener(() => {
+    socket?.close(1000, 'Meet tab closed');
+    for (const [meetingId, relay] of meetRelays) {
+      if (relay.socket === socket)
+        meetRelays.delete(meetingId);
+    }
+  });
+});
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes)
+    binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  return Uint8Array.from(atob(value), character => character.charCodeAt(0));
+}

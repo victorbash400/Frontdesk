@@ -12,8 +12,10 @@ export default defineConfig({
       entry: {
         background: resolve(extensionRoot, 'src/background.ts'),
         content: resolve(extensionRoot, 'src/content.ts'),
+        meetAgent: resolve(extensionRoot, 'src/meetAgent.ts'),
+        meetRelay: resolve(extensionRoot, 'src/meetRelay.ts'),
       },
-      fileName: (_format, entryName) => entryName === 'background' ? 'background.mjs' : 'content.js',
+      fileName: (_format, entryName) => entryName === 'background' ? 'background.mjs' : `${entryName}.js`,
       formats: ['es'],
     },
   },

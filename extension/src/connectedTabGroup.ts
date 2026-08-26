@@ -47,7 +47,7 @@ export class ConnectedBrowser {
       throw new Error('The selected browser tab has no Chrome window.');
     this._windowId = selectedTab.windowId;
     this._connection.setPreferredWindowId(selectedTab.windowId);
-    this._connection.setBootstrapTabId(selectedTab.id!);
+    this._connection.setBootstrapTab(selectedTab);
     await this._trackAndAttach(selectedTab);
     this._connection.didInitialize();
   }

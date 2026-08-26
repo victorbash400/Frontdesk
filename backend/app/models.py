@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -90,6 +90,16 @@ class CustomerMemory(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 
+class DocumentContent(Base):
+    __tablename__ = "document_contents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    node_id: Mapped[str] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"), unique=True, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
 class OAuthConnection(Base):
     __tablename__ = "oauth_connections"
     __table_args__ = (UniqueConstraint("account_id", "provider"),)
@@ -171,6 +181,8 @@ class Goal(Base):
     skill_ids: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     plugin_ids: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="active", nullable=False, index=True)
+    run_state: Mapped[str] = mapped_column(String(24), default="idle", nullable=False)
+    current_step: Mapped[str] = mapped_column(Text, default="", nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -195,7 +207,16 @@ class GoalAssignment(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
     instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="queued", nullable=False, index=True)
+    phase: Mapped[str] = mapped_column(String(24), default="queued", nullable=False)
+    progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    current_step: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    next_step: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    depends_on: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    required_inputs: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    expected_outputs: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    preview_target: Mapped[str] = mapped_column(Text, default="null", nullable=False)
     report: Mapped[str] = mapped_column(Text, default="", nullable=False)
     evidence: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     lease_owner: Mapped[str | None] = mapped_column(String(128))
@@ -203,6 +224,27 @@ class GoalAssignment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GoalTaskUpdate(Base):
+    __tablename__ = "goal_task_updates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    assignment_id: Mapped[str] = mapped_column(ForeignKey("goal_assignments.id", ondelete="CASCADE"), index=True)
+    phase: Mapped[str] = mapped_column(String(24), nullable=False)
+    progress: Mapped[int] = mapped_column(Integer, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    next_step: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class GoalBrowserPreview(Base):
+    __tablename__ = "goal_browser_previews"
+
+    assignment_id: Mapped[str] = mapped_column(ForeignKey("goal_assignments.id", ondelete="CASCADE"), primary_key=True)
+    image: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 
 class GoalAutomation(Base):

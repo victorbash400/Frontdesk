@@ -14,6 +14,7 @@
   "license": "Apache-2.0",
   "scripts": {
     "build": "vite build && vite build --config vite.background.config.mts && node scripts/copy-static.mjs",
+    "test": "vitest run --config vite.background.config.mts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.ui.json"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "@types/chrome": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vitest": "latest"
   }
 }

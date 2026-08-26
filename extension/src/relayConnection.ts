@@ -75,6 +75,7 @@ export class RelayConnection {
   private _preferredWindowId?: number;
   private _focusedTabId?: number;
   private _bootstrapTabId?: number;
+  private _newTabUrl?: string;
 
   get attachedTabs(): ReadonlySet<number> {
     return this._attachedTabs;
@@ -99,8 +100,11 @@ export class RelayConnection {
     this._preferredWindowId = windowId;
   }
 
-  setBootstrapTabId(tabId: number): void {
-    this._bootstrapTabId = tabId;
+  setBootstrapTab(tab: chrome.tabs.Tab): void {
+    if (tab.id === undefined || !tab.url || !/^https?:/.test(tab.url))
+      throw new Error('The Front Desk browser bridge tab is invalid.');
+    this._bootstrapTabId = tab.id;
+    this._newTabUrl = tab.url;
   }
 
   close(message: string): void {
@@ -195,8 +199,6 @@ export class RelayConnection {
     if (tabId === undefined || !this._attachedTabs.has(tabId))
       return;
     this._sendMessage({ method: fullMethod, params: args });
-    if (fullMethod === 'chrome.debugger.onEvent' && args[1] === 'Page.loadEventFired')
-      void this._deliverBrowserAction(tabId, { kind: 'navigate', label: 'Working in this tab' });
     // chrome.debugger.onDetach is the single source of truth for detach bookkeeping.
     if (fullMethod === 'chrome.debugger.onDetach') {
       const reason = args[1] as string | undefined;
@@ -304,12 +306,13 @@ export class RelayConnection {
       const createProperties = { ...(args[0] || {}) };
       if (this._preferredWindowId !== undefined)
         createProperties.windowId = this._preferredWindowId;
-      // Playwright's extension transport creates its page as about:blank.
-      // Chrome considers that target extension-owned, so its first
-      // Page.navigate is rejected. Give the target a permitted origin while
-      // preserving Playwright's normal new-page lifecycle.
+      // Playwright's extension transport creates its page as about:blank,
+      // which Chrome treats as extension-owned. Start from this connection's
+      // real Front Desk bridge origin so the first Page.navigate is permitted.
       if (!createProperties.url || createProperties.url === 'about:blank')
-        createProperties.url = 'https://example.com/';
+        createProperties.url = this._newTabUrl;
+      if (!createProperties.url)
+        throw new Error('The Front Desk browser bridge URL is missing.');
       args[0] = createProperties;
     }
     if (message.method === 'chrome.debugger.sendCommand') {

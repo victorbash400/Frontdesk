@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     scheduler_audience: str = ""
     scheduler_service_account: str = ""
     playwright_extension_token: str = ""
+    google_workspace_events_topic: str = ""
+    public_api_url: str = "http://127.0.0.1:8000"
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / "backend" / ".env",

@@ -59,6 +59,24 @@ async def connected_playwright_toolset() -> McpToolset:
     return toolset
 
 
+async def capture_browser_preview(toolset: McpToolset, assignment_id: str) -> bytes:
+    """Capture the controlled tab into a stable task-scoped image."""
+    filename = f"goal-{assignment_id}.png"
+    tools = await toolset.get_tools()
+    screenshot_tool = next((tool for tool in tools if tool.name == "browser_take_screenshot"), None)
+    if screenshot_tool is None:
+        raise RuntimeError("Browser Use did not expose browser_take_screenshot.")
+    session = await screenshot_tool._mcp_session_manager.create_session()  # type: ignore[attr-defined]
+    result = await session.call_tool("browser_take_screenshot", arguments={"type": "png", "filename": filename})
+    if result.isError:
+        message = " ".join(getattr(item, "text", "") for item in result.content).strip()
+        raise RuntimeError(message or "Chrome rejected the browser preview capture.")
+    preview_path = PLAYWRIGHT_OUTPUT_DIR / filename
+    if not preview_path.is_file():
+        raise RuntimeError("Browser Use did not write the preview image.")
+    return preview_path.read_bytes()
+
+
 def create_playwright_toolset() -> McpToolset:
     binary = _playwright_binary()
     token = get_settings().playwright_extension_token
@@ -76,6 +94,8 @@ def create_playwright_toolset() -> McpToolset:
                     "--browser",
                     "chrome",
                     "--snapshot-boxes",
+                    "--output-dir",
+                    str(PLAYWRIGHT_OUTPUT_DIR),
                     "--image-responses",
                     "omit",
                     "--codegen",

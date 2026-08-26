@@ -4,8 +4,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from .models import Node, Workspace
-from .schemas import NodeCreate, NodeUpdate
+from .models import DocumentContent, Node, Workspace
+from .schemas import FileSystemNodeSync, NodeCreate, NodeUpdate
 
 
 def list_nodes(session: Session, account_id: str, parent_id: str | None, include_trashed: bool) -> list[Node]:
@@ -72,6 +72,51 @@ def set_trashed(session: Session, account_id: str, node_id: str, trashed: bool) 
     session.commit()
     session.refresh(node)
     return node
+
+
+def sync_nodes(session: Session, account_id: str, nodes: list[FileSystemNodeSync]) -> dict[str, int]:
+    workspace = require_workspace(session, account_id)
+    incoming_ids = {item.id for item in nodes}
+    for item in nodes:
+        existing = session.get(Node, item.id)
+        if existing and existing.workspace_id != workspace.id:
+            raise HTTPException(status.HTTP_409_CONFLICT, f"Item {item.id} belongs to another workspace.")
+        if item.parent_id and item.parent_id not in incoming_ids:
+            parent = session.get(Node, item.parent_id)
+            if not parent or parent.workspace_id != workspace.id:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Parent {item.parent_id} is missing.")
+
+    pending = list(nodes)
+    synced = 0
+    while pending:
+        progressed = False
+        for item in pending[:]:
+            if item.parent_id and not session.get(Node, item.parent_id):
+                continue
+            node = session.get(Node, item.id)
+            if not node:
+                node = Node(id=item.id, workspace_id=workspace.id, parent_id=item.parent_id, name=item.name, kind=item.kind)
+                session.add(node)
+            node.parent_id = item.parent_id
+            node.name = item.name
+            node.kind = item.kind
+            node.shared = item.shared
+            node.needs_attention = item.needs_attention
+            node.trashed_at = item.trashed_at
+            session.flush()
+            if item.kind in {"document", "note"} and item.content is not None:
+                content = session.scalar(select(DocumentContent).where(DocumentContent.node_id == node.id))
+                if content:
+                    content.content = item.content
+                else:
+                    session.add(DocumentContent(node_id=node.id, content=item.content))
+            pending.remove(item)
+            synced += 1
+            progressed = True
+        if not progressed:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The filesystem contains a parent cycle.")
+    session.commit()
+    return {"synced": synced}
 
 
 def require_workspace(session: Session, account_id: str) -> Workspace:

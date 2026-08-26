@@ -65,6 +65,7 @@ def workspace_tools(account_id: str) -> list[FunctionTool]:
     if permissions.get("workspace.drive", True):
         functions.append(workspace_drive_search)
     if permissions.get("workspace.docs", True) and permissions.get("workspace.drive", True):
+        functions.append(workspace_docs_read)
         functions.append(workspace_docs_create)
     functions.append(workspace_google_api_request)
     return [FunctionTool(function) for function in functions]
@@ -238,7 +239,19 @@ async def workspace_docs_create(title: str, content: str, tool_context: ToolCont
         raise RuntimeError("Google Docs did not return a document ID.")
     if content:
         await workspace_request(account_id, "POST", f"{DOCS_API}/{document_id}:batchUpdate", json={"requests": [{"insertText": {"location": {"index": 1}, "text": content}}]})
-    return {"document_id": document_id, "title": title, "url": f"https://docs.google.com/document/d/{document_id}/edit"}
+    return {"document_id": document_id, "title": title, "url": f"https://docs.google.com/document/d/{document_id}/edit", "preview": workspace_preview(document_id, title, "application/vnd.google-apps.document")}
+
+
+async def workspace_docs_read(document_id: str, tool_context: ToolContext) -> dict[str, Any]:
+    """Read a Google Doc through the Docs API and return its text and preview identity."""
+    clean_id = google_resource_id(document_id)
+    result = await workspace_request(_account_id(tool_context), "GET", f"{DOCS_API}/{clean_id}")
+    return {
+        "document_id": clean_id,
+        "title": result.get("title"),
+        "text": document_text(result),
+        "preview": workspace_preview(clean_id, result.get("title"), "application/vnd.google-apps.document"),
+    }
 
 
 async def workspace_access_token(account_id: str) -> str:
@@ -274,6 +287,27 @@ def _account_id(tool_context: ToolContext) -> str:
     if not account_id:
         raise RuntimeError("The goal worker account scope is missing.")
     return account_id
+
+
+def google_resource_id(value: str) -> str:
+    clean = value.strip()
+    if "/d/" in clean:
+        clean = clean.split("/d/", 1)[1].split("/", 1)[0]
+    if not re.fullmatch(r"[A-Za-z0-9_-]{10,}", clean):
+        raise RuntimeError("A valid Google resource ID or URL is required.")
+    return clean
+
+
+def workspace_preview(resource_id: str, title: str | None = None, mime_type: str | None = None) -> dict[str, Any]:
+    return {"kind": "workspace", "resource_id": resource_id, "title": title, "mime_type": mime_type}
+
+
+def document_text(document: dict[str, Any]) -> str:
+    return "".join(
+        str(element.get("textRun", {}).get("content") or "")
+        for block in document.get("body", {}).get("content", [])
+        for element in block.get("paragraph", {}).get("elements", [])
+    )
 
 
 def _permission_map(account_id: str) -> dict[str, bool]:

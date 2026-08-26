@@ -5,6 +5,7 @@ import json
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.responses import HTMLResponse, Response, StreamingResponse
 
@@ -15,15 +16,18 @@ from .config import get_settings
 from .database import SessionLocal, get_session, initialize_database
 from .event_stream import account_events
 from .goal_tasks import goal_tasks
+from .goals_chat_stream import stream_goals_chat
 from .google_oauth import begin_connection, connection_status, disconnect, finish_connection, profile_photo, set_workspace_permission
 from .goals import answer_notification, claim_due_automations, create_automation, create_goal, delete_goal, list_goals, list_notifications, update_goal
 from .github_repositories import repository_access, set_repository_access
 from .mcp_oauth import begin_connection as begin_mcp_connection
 from .mcp_oauth import connection_support, disconnect as disconnect_mcp, finish_connection as finish_mcp_connection
+from .models import Goal, GoalAssignment, GoalBrowserPreview
 from .plugin_service import install_plugin, plugin_snapshot, set_plugin_permission, uninstall_plugin
-from .repository import create_node, list_nodes, search_nodes, set_trashed, update_node
-from .schemas import AccountCreate, AccountCredentials, AccountRead, AutomationCreate, ChatRequest, GitHubRepositoryUpdate, GoalCreate, GoalUpdate, HealthRead, NodeCreate, NodeRead, NodeUpdate, NotificationAnswer, PermissionUpdate, VoiceTicketRequest
+from .repository import create_node, list_nodes, search_nodes, set_trashed, sync_nodes, update_node
+from .schemas import AccountCreate, AccountCredentials, AccountRead, AutomationCreate, ChatRequest, FileSystemSync, GitHubRepositoryUpdate, GoalCreate, GoalsChatRequest, GoalUpdate, HealthRead, NodeCreate, NodeRead, NodeUpdate, NotificationAnswer, PermissionUpdate, VoiceTicketRequest
 from .voice import create_voice_ticket, run_voice_session
+from meetings.routes import router as meetings_router
 
 
 @asynccontextmanager
@@ -36,6 +40,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Front Desk API", version="0.1.0", lifespan=lifespan)
+app.include_router(meetings_router)
 settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
@@ -80,6 +85,12 @@ def chat_stream(body: ChatRequest, account_id: str = Depends(require_account_id)
     return StreamingResponse(events, media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.post("/api/goals/chat/stream")
+def goals_chat_stream(body: GoalsChatRequest, account_id: str = Depends(require_account_id)) -> StreamingResponse:
+    events = stream_goals_chat(account_id=account_id, chat_id=body.chat_id, message=body.message, create_title=body.create_title)
+    return StreamingResponse(events, media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.post("/api/voice/ticket")
 def post_voice_ticket(body: VoiceTicketRequest, account_id: str = Depends(require_account_id)) -> dict[str, str]:
     return {"ticket": create_voice_ticket(account_id, body.client_id, body.session_id)}
@@ -93,6 +104,43 @@ async def voice_socket(websocket: WebSocket, session_id: str, ticket: str, voice
 @app.get("/api/goals")
 def get_goals(client_id: str | None = None, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> list[dict[str, object]]:
     return list_goals(session, account_id, client_id)
+
+
+@app.get("/api/workspace/previews/{file_id}")
+async def workspace_file_preview(file_id: str, account_id: str = Depends(require_account_id)) -> Response:
+    from tools.workspace import DRIVE_API, google_resource_id, workspace_access_token
+
+    try:
+        resource_id = google_resource_id(file_id)
+        token = await workspace_access_token(account_id)
+    except RuntimeError as error:
+        raise HTTPException(400, str(error)) from error
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        metadata = await client.get(f"{DRIVE_API}/files/{resource_id}", headers=headers, params={"fields": "thumbnailLink"})
+        if metadata.is_error:
+            raise HTTPException(metadata.status_code, "Google Drive preview metadata is unavailable.")
+        thumbnail_link = metadata.json().get("thumbnailLink")
+        if not thumbnail_link:
+            raise HTTPException(404, "This Workspace file does not provide a rendered preview.")
+        thumbnail = await client.get(thumbnail_link, headers=headers)
+    content_type = thumbnail.headers.get("content-type", "")
+    if thumbnail.is_error or not content_type.startswith("image/"):
+        raise HTTPException(502, "Google Drive returned an invalid preview image.")
+    return Response(content=thumbnail.content, media_type=content_type, headers={"Cache-Control": "private, no-store"})
+
+
+@app.get("/api/browser/previews/{assignment_id}")
+def browser_task_preview(assignment_id: str, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> Response:
+    preview = session.scalar(
+        select(GoalBrowserPreview)
+        .join(GoalAssignment, GoalAssignment.id == GoalBrowserPreview.assignment_id)
+        .join(Goal, Goal.id == GoalAssignment.goal_id)
+        .where(GoalBrowserPreview.assignment_id == assignment_id, Goal.account_id == account_id)
+    )
+    if not preview:
+        raise HTTPException(404, "This task does not have a browser preview.")
+    return Response(content=preview.image, media_type="image/png", headers={"Cache-Control": "private, no-store", "ETag": preview.revision})
 
 
 @app.post("/api/goals", status_code=201)
@@ -330,3 +378,8 @@ def trash_node(node_id: str, account_id: str = Depends(require_account_id), sess
 @app.post("/api/nodes/{node_id}/restore", response_model=NodeRead)
 def restore_node(node_id: str, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> NodeRead:
     return set_trashed(session, account_id, node_id, False)
+
+
+@app.put("/api/filesystem/sync")
+def put_filesystem_sync(body: FileSystemSync, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, int]:
+    return sync_nodes(session, account_id, body.nodes)

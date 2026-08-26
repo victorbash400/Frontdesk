@@ -9,6 +9,7 @@ from .config import get_settings
 
 
 EVENT_CHANNEL = "front_desk_events"
+KEEPALIVE_SECONDS = 15
 
 
 class AccountEventBroker:
@@ -29,7 +30,12 @@ class AccountEventBroker:
         try:
             yield frame({"type": "ready"})
             while True:
-                yield frame(await queue.get())
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=KEEPALIVE_SECONDS)
+                except TimeoutError:
+                    yield keepalive()
+                    continue
+                yield frame(event)
         finally:
             with self._lock:
                 subscribers = self._subscribers.get(account_id)
@@ -58,16 +64,31 @@ class AccountEventBroker:
         try:
             await connection.execute(f"LISTEN {EVENT_CHANNEL}")
             yield frame({"type": "ready"})
-            async for notification in connection.notifies():
+            notifications = connection.notifies().__aiter__()
+            next_notification = asyncio.create_task(anext(notifications))
+            while True:
+                done, _ = await asyncio.wait({next_notification}, timeout=KEEPALIVE_SECONDS)
+                if not done:
+                    yield keepalive()
+                    continue
+                notification = next_notification.result()
+                next_notification = asyncio.create_task(anext(notifications))
                 payload = json.loads(notification.payload)
                 if payload.get("account_id") == account_id and isinstance(payload.get("event"), dict):
                     yield frame(payload["event"])
         finally:
+            if "next_notification" in locals():
+                next_notification.cancel()
+                await asyncio.gather(next_notification, return_exceptions=True)
             await connection.close()
 
 
 def frame(event: dict[str, object]) -> str:
     return f"data: {json.dumps(event, default=str)}\n\n"
+
+
+def keepalive() -> str:
+    return ": keepalive\n\n"
 
 
 account_events = AccountEventBroker()

@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete as sql_delete, select
 from sqlalchemy.orm import Session
 
-from .models import Goal, GoalActivity, GoalAssignment, GoalAutomation, GoalNotification
+from .models import Goal, GoalActivity, GoalAssignment, GoalAutomation, GoalBrowserPreview, GoalNotification, GoalTaskUpdate
 from .event_stream import account_events
 
 
@@ -69,6 +69,9 @@ def update_goal(
     if status is not None:
         goal.status = status
         goal.completed_at = datetime.now(timezone.utc) if status == "completed" else None
+        goal.run_state = "idle" if status == "active" else status
+        if status == "completed":
+            goal.current_step = ""
     goal.version += 1
     session.add(GoalActivity(goal_id=goal.id, kind="goal_updated", summary="Goal definition or current situation updated."))
     session.commit()
@@ -80,6 +83,9 @@ def update_goal(
 def delete_goal(session: Session, account_id: str, goal_id: str) -> None:
     goal = require_goal(session, account_id, goal_id)
     client_id = goal.client_id
+    assignment_ids = select(GoalAssignment.id).where(GoalAssignment.goal_id == goal.id)
+    session.execute(sql_delete(GoalBrowserPreview).where(GoalBrowserPreview.assignment_id.in_(assignment_ids)))
+    session.execute(sql_delete(GoalTaskUpdate).where(GoalTaskUpdate.assignment_id.in_(assignment_ids)))
     for model in (GoalNotification, GoalAutomation, GoalAssignment, GoalActivity):
         session.execute(sql_delete(model).where(model.goal_id == goal.id))
     session.delete(goal)
@@ -167,7 +173,7 @@ def create_assignment(session: Session, account_id: str, goal_id: str, instructi
     session.commit()
     session.refresh(assignment)
     account_events.publish(account_id, {"type": "goals_changed", "client_id": goal.client_id, "goal_id": goal.id})
-    return assignment_snapshot(assignment)
+    return assignment_snapshot(session, assignment)
 
 
 def add_goal_activity(session: Session, account_id: str, goal_id: str, kind: str, summary: str) -> dict[str, object]:
@@ -225,7 +231,11 @@ def goal_snapshot(session: Session, goal: Goal) -> dict[str, object]:
     assignments = list(session.scalars(select(GoalAssignment).where(GoalAssignment.goal_id == goal.id).order_by(GoalAssignment.created_at.desc()).limit(20)))
     run_state = goal.status
     if goal.status == "active":
-        run_state = assignments[0].status if assignments else "idle"
+        if goal.run_state == "planning":
+            run_state = "planning"
+        else:
+            active_assignment = next((item for item in assignments if item.status in {"running", "blocked", "queued"}), None)
+            run_state = active_assignment.status if active_assignment else assignments[0].status if assignments else goal.run_state
     return {
         "id": goal.id,
         "clientId": goal.client_id,
@@ -235,13 +245,14 @@ def goal_snapshot(session: Session, goal: Goal) -> dict[str, object]:
         "pluginIds": json.loads(goal.plugin_ids),
         "status": goal.status,
         "runState": run_state,
+        "currentStep": goal.current_step,
         "version": goal.version,
         "createdAt": goal.created_at.isoformat(),
         "updatedAt": goal.updated_at.isoformat(),
         "startedAt": goal.started_at.isoformat(),
         "completedAt": goal.completed_at.isoformat() if goal.completed_at else None,
         "activities": [activity_snapshot(item) for item in activities],
-        "assignments": [assignment_snapshot(item) for item in assignments],
+        "assignments": [assignment_snapshot(session, item) for item in assignments],
         "automations": [automation_snapshot(item) for item in automations],
     }
 
@@ -250,8 +261,28 @@ def activity_snapshot(activity: GoalActivity) -> dict[str, object]:
     return {"id": activity.id, "kind": activity.kind, "summary": activity.summary, "evidence": json.loads(activity.evidence), "createdAt": activity.created_at.isoformat()}
 
 
-def assignment_snapshot(assignment: GoalAssignment) -> dict[str, object]:
-    return {"id": assignment.id, "instruction": assignment.instruction, "status": assignment.status, "report": assignment.report, "evidence": json.loads(assignment.evidence), "createdAt": assignment.created_at.isoformat(), "startedAt": assignment.started_at.isoformat() if assignment.started_at else None, "finishedAt": assignment.finished_at.isoformat() if assignment.finished_at else None}
+def assignment_snapshot(session: Session, assignment: GoalAssignment) -> dict[str, object]:
+    updates = list(session.scalars(select(GoalTaskUpdate).where(GoalTaskUpdate.assignment_id == assignment.id).order_by(GoalTaskUpdate.created_at.desc()).limit(30)))
+    return {
+        "id": assignment.id,
+        "title": assignment.title,
+        "instruction": assignment.instruction,
+        "status": assignment.status,
+        "phase": assignment.phase,
+        "progress": assignment.progress,
+        "currentStep": assignment.current_step,
+        "nextStep": assignment.next_step,
+        "dependsOn": json.loads(assignment.depends_on),
+        "requiredInputs": json.loads(assignment.required_inputs),
+        "expectedOutputs": json.loads(assignment.expected_outputs),
+        "previewTarget": json.loads(assignment.preview_target),
+        "updates": [{"id": item.id, "phase": item.phase, "progress": item.progress, "message": item.message, "nextStep": item.next_step, "createdAt": item.created_at.isoformat()} for item in updates],
+        "report": assignment.report,
+        "evidence": json.loads(assignment.evidence),
+        "createdAt": assignment.created_at.isoformat(),
+        "startedAt": assignment.started_at.isoformat() if assignment.started_at else None,
+        "finishedAt": assignment.finished_at.isoformat() if assignment.finished_at else None,
+    }
 
 
 def automation_snapshot(automation: GoalAutomation) -> dict[str, object]:

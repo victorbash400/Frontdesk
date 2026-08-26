@@ -7,12 +7,13 @@ import time
 from contextlib import suppress
 
 from fastapi import WebSocket, WebSocketDisconnect
-from google import genai
 from google.genai import types
 
 from .config import get_settings
 from .database import SessionLocal
-from .goals import create_notification, list_goals, update_goal
+from .goals import list_goals
+from .gemini import create_genai_client
+from tools.supervisor_tools import execute_client_tool
 
 VOICE_MODEL = "gemini-3.1-flash-live-preview"
 LIVE_VOICES = {"Kore", "Aoede", "Leda", "Zephyr", "Puck", "Charon", "Fenrir", "Orus", "Sulafat"}
@@ -50,7 +51,6 @@ async def run_voice_session(websocket: WebSocket, session_id: str, ticket: str, 
         account_id, client_id = verify_voice_ticket(ticket, session_id)
         settings = get_settings()
         if voice not in LIVE_VOICES or language not in LANGUAGES: raise ValueError("Unsupported voice or spoken language.")
-        if not settings.gemini_api_key: raise RuntimeError("FRONT_DESK_GEMINI_API_KEY is required for voice.")
         with SessionLocal() as database:
             goals = list_goals(database, account_id, client_id)
         config = types.LiveConnectConfig(
@@ -64,7 +64,7 @@ async def run_voice_session(websocket: WebSocket, session_id: str, ticket: str, 
             system_instruction=f"{VOICE_INSTRUCTION}\n\nCurrent client goal snapshot:\n{json.dumps(goals)}\n\nRespond unmistakably in {LANGUAGES[language]}.",
             tools=VOICE_TOOLS,
         )
-        client = genai.Client(api_key=settings.gemini_api_key, vertexai=False)
+        client = create_genai_client(settings)
         async with client.aio.live.connect(model=settings.gemini_voice_model, config=config) as live:
             await websocket.send_json({"type": "ready"})
             async def receive_input() -> None:
@@ -116,9 +116,4 @@ async def run_voice_session(websocket: WebSocket, session_id: str, ticket: str, 
         with suppress(RuntimeError): await websocket.close(code=1008)
 
 def handle_tool(account_id: str, client_id: str, name: str, args: dict) -> dict:
-    with SessionLocal() as session:
-        if name == "get_client_goals": return {"goals": list_goals(session, account_id, client_id)}
-        if name == "update_goal_board": return update_goal(session, account_id, args["goal_id"], situation=args["situation"], expected_version=args["expected_version"])
-        if name == "ask_user": return create_notification(session, account_id, args["goal_id"], "clarification", args["question"])
-        if name == "send_client_message": return create_notification(session, account_id, args["goal_id"], "message", args["message"])
-        return {"status": "failed", "error": "Unsupported voice tool."}
+    return execute_client_tool(account_id, client_id, name, args)

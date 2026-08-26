@@ -17,13 +17,26 @@ os.environ["FRONT_DESK_INTERNAL_SECRET"] = "test-internal-secret"
 
 from app.main import app
 from app.database import SessionLocal
+from app.event_stream import AccountEventBroker
 from app.goal_tasks import GoalTaskManager
 from app.goals import create_notification
-from app.models import GitHubRepositoryAccess, Goal, GoalAssignment, GoalAutomation, PluginInstallation
+from app.models import GitHubRepositoryAccess, Goal, GoalAssignment, GoalAutomation, GoalBrowserPreview, PluginInstallation
+from agents.goal_planner import GoalPlan, GoalTaskOperation
+from agents.goals_chat_agent import create_goals_chat_app
 from app.voice import VOICE_MODEL, VOICE_TOOLS, verify_voice_ticket
 from tools import workspace
 from tools.browser_use import playwright as playwright_browser
+from tools.goal_control import complete_goal
 from tools.tool_failures import begin_single_tool, finish_single_tool
+from tools.supervisor_tools import execute_client_tool
+
+
+def create_test_assignment(goal_id: str, instruction: str) -> str:
+    with SessionLocal() as session:
+        assignment = GoalAssignment(goal_id=goal_id, instruction=instruction, status="queued")
+        session.add(assignment)
+        session.commit()
+        return assignment.id
 
 
 def test_client_folder_lifecycle() -> None:
@@ -51,6 +64,29 @@ def test_client_folder_lifecycle() -> None:
         trashed = client.post(f"/api/nodes/{client_id}/trash", headers=headers)
         assert trashed.status_code == 200
         assert trashed.json()["trashed_at"] is not None
+
+
+def test_filesystem_sync_exposes_nested_documents_and_respects_trash() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "potato-sync@example.com", "Potato Sync")
+        headers = account_headers(account["id"])
+        client_id = "potato-client"
+        folder_id = "potato-runbooks"
+        document_id = "potato-access"
+        payload = {"nodes": [
+            {"id": client_id, "parent_id": None, "name": "Potato", "kind": "client"},
+            {"id": folder_id, "parent_id": client_id, "name": "Runbooks", "kind": "folder"},
+            {"id": document_id, "parent_id": folder_id, "name": "Portal recovery.md", "kind": "document", "content": "Use incident PT-ACCESS-204."},
+        ]}
+        response = client.put("/api/filesystem/sync", headers=headers, json=payload)
+        assert response.status_code == 200
+        assert response.json() == {"synced": 3}
+        documents = execute_client_tool(account["id"], client_id, "get_client_documents", {})["documents"]
+        assert documents == [{"id": document_id, "name": "Portal recovery.md", "content": "Use incident PT-ACCESS-204."}]
+
+        payload["nodes"][2]["trashed_at"] = datetime.now(timezone.utc).isoformat()
+        assert client.put("/api/filesystem/sync", headers=headers, json=payload).status_code == 200
+        assert execute_client_tool(account["id"], client_id, "get_client_documents", {}) == {"documents": []}
 
 
 def test_accounts_and_workspaces_are_isolated() -> None:
@@ -238,13 +274,17 @@ def test_goal_tool_preflight_failure_never_creates_gemini_runner() -> None:
     manager = GoalTaskManager()
     runner = MagicMock()
     with patch("app.goal_tasks.connected_playwright_toolset", new=AsyncMock(side_effect=RuntimeError("Chrome extension is not connected."))), patch.object(manager, "_runner", runner):
-        asyncio.run(manager._run(account["id"], goal["id"]))
+        assignment_id = create_test_assignment(goal["id"], goal["text"])
+        asyncio.run(manager._run_assignment(account["id"], goal["id"], assignment_id))
 
     runner.assert_not_called()
     with SessionLocal() as session:
         assignment = session.query(GoalAssignment).filter_by(goal_id=goal["id"]).one()
         assert assignment.status == "failed"
         assert assignment.report == "Chrome extension is not connected."
+        persisted_goal = session.get(Goal, goal["id"])
+        assert persisted_goal and persisted_goal.run_state == "failed"
+        assert persisted_goal.current_step == "Chrome extension is not connected."
 
 
 def test_answering_a_blocking_question_resumes_with_the_answer() -> None:
@@ -291,6 +331,43 @@ def test_workspace_preflight_only_probes_enabled_services() -> None:
         asyncio.run(workspace.preflight_workspace("account"))
 
     assert calls == [f"{workspace.DRIVE_API}/about"]
+
+
+def test_workspace_preview_returns_the_authenticated_drive_thumbnail() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "workspace-preview@example.com", "Workspace Preview")
+
+        class Response:
+            def __init__(self, *, content: bytes = b"", content_type: str = "application/json", payload: dict[str, str] | None = None) -> None:
+                self.content = content
+                self.headers = {"content-type": content_type}
+                self.is_error = False
+                self.status_code = 200
+                self._payload = payload or {}
+
+            def json(self) -> dict[str, str]:
+                return self._payload
+
+        class Client:
+            def __init__(self, **_: object) -> None:
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_: object) -> None:
+                return None
+
+            async def get(self, url: str, **_: object) -> Response:
+                if url.startswith(workspace.DRIVE_API):
+                    return Response(payload={"thumbnailLink": "https://drive.google.com/thumbnail/document-preview-123"})
+                return Response(content=b"workspace-image", content_type="image/png")
+
+        with patch.object(workspace, "workspace_access_token", new=AsyncMock(return_value="token")), patch("app.main.httpx.AsyncClient", Client):
+            response = client.get("/api/workspace/previews/document-preview-123", headers=account_headers(account["id"]))
+        assert response.status_code == 200
+        assert response.content == b"workspace-image"
+        assert response.headers["content-type"] == "image/png"
 
 
 def test_workspace_gmail_send_uses_the_real_send_endpoint() -> None:
@@ -342,7 +419,8 @@ def test_cancelling_a_running_goal_persists_cancelled_assignment() -> None:
             entered.set()
             await asyncio.Event().wait()
 
-        with patch.object(manager, "_preflight", new=wait_in_preflight):
+        assignment_id = create_test_assignment(goal["id"], goal["text"])
+        with patch.object(manager, "_planned_assignments", new=AsyncMock(return_value=[assignment_id])), patch.object(manager, "_preflight", new=wait_in_preflight):
             assert await manager.start(account["id"], goal["id"])
             await entered.wait()
             assert await manager.cancel(goal["id"])
@@ -373,32 +451,218 @@ def test_worker_cannot_complete_without_complete_goal_evidence() -> None:
 
     async def exercise() -> None:
         manager = GoalTaskManager()
+        assignment_id = create_test_assignment(goal["id"], goal["text"])
         with patch.object(manager, "_preflight", new=AsyncMock(return_value=([], []))), patch.object(manager, "_runner", return_value=RunnerWithoutCompletion()):
-            await manager._run(account["id"], goal["id"])
+            await manager._run_assignment(account["id"], goal["id"], assignment_id)
 
     asyncio.run(exercise())
     with SessionLocal() as session:
         assignment = session.query(GoalAssignment).filter_by(goal_id=goal["id"]).one()
         assert assignment.status == "failed"
-        assert assignment.report == "The worker stopped without explicitly completing the goal."
+        assert assignment.report == "The worker stopped without explicitly completing its task."
+        persisted_goal = session.get(Goal, goal["id"])
+        assert persisted_goal and persisted_goal.run_state == "failed"
+        assert persisted_goal.current_step == assignment.report
 
 
-def test_goal_worker_rejects_parallel_calls_and_stops_after_failure() -> None:
+def test_task_completion_requires_evidence_for_every_planned_output() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "output-evidence@example.com", "Output Evidence")
+        goal_payload = client.post("/api/goals", headers=account_headers(account["id"]), json={
+            "client_id": "output-client",
+            "text": "Produce a verified report.",
+            "skill_ids": [],
+            "plugin_ids": [],
+        }).json()
+    with SessionLocal() as session:
+        assignment = GoalAssignment(goal_id=goal_payload["id"], title="Produce report", instruction="Produce the report.", expected_outputs=json.dumps(["Verified report URL"]))
+        session.add(assignment)
+        session.commit()
+        task_id = assignment.id
+    context = SimpleNamespace(state={"goal_id": goal_payload["id"], "assignment_id": task_id}, actions=SimpleNamespace(end_of_agent=False))
+    missing = complete_goal("Report created.", "Created through Docs.", context, outputs=[])
+    assert missing == {"status": "failed", "error": "Task completion evidence is missing for: Verified report URL."}
+    assert context.actions.end_of_agent is False
+    completed = complete_goal("Report created.", "Created through Docs.", context, outputs=[{"name": "Verified report URL", "evidence": "https://docs.google.com/document/d/report-id/edit"}])
+    assert completed["status"] == "completed"
+    assert context.actions.end_of_agent is True
+
+
+def test_planner_creates_ordered_persistent_tasks_and_updates_queued_work() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "planner-board@example.com", "Planner Board")
+        goal_payload = client.post("/api/goals", headers=account_headers(account["id"]), json={
+            "client_id": "planner-client",
+            "text": "Prepare and send the client outcome.",
+            "skill_ids": [],
+            "plugin_ids": [],
+        }).json()
+
+    manager = GoalTaskManager()
+    goal = manager._goal(account["id"], goal_payload["id"])
+    created_plan = GoalPlan(operations=[
+        GoalTaskOperation(action="create", key="prepare", title="Prepare outcome", instruction="Prepare the verified client outcome.", expected_outputs=["Verified outcome"]),
+        GoalTaskOperation(action="create", key="send", title="Send outcome", instruction="Send the verified outcome to the client.", depends_on=["prepare"], required_inputs=["Verified outcome"], expected_outputs=["Sent message ID"]),
+    ])
+    async def inspect_planning_state(*_: object) -> GoalPlan:
+        planning = manager._goal(account["id"], goal.id)
+        assert planning.run_state == "planning"
+        assert planning.current_step == "Defining tasks for: Create the task board."
+        return created_plan
+
+    with patch("app.goal_tasks.create_goal_planner_runner"), patch("app.goal_tasks.plan_goal", new=AsyncMock(side_effect=inspect_planning_state)):
+        task_ids = asyncio.run(manager._planned_assignments(account["id"], goal, "Create the task board."))
+
+    with SessionLocal() as session:
+        tasks = [session.get(GoalAssignment, task_id) for task_id in task_ids]
+        assert [task.title for task in tasks if task] == ["Prepare outcome", "Send outcome"]
+        assert json.loads(tasks[1].depends_on) == [tasks[0].id]
+        persisted_goal = session.get(Goal, goal.id)
+        assert persisted_goal and persisted_goal.run_state == "queued"
+        assert persisted_goal.current_step == "Prepare outcome"
+
+    updated_plan = GoalPlan(operations=[GoalTaskOperation(action="update", task_id=task_ids[1], key="send", title="Send concise outcome", instruction="Send a concise verified outcome to the client.")])
+    with patch("app.goal_tasks.create_goal_planner_runner"), patch("app.goal_tasks.plan_goal", new=AsyncMock(return_value=updated_plan)):
+        revised_ids = asyncio.run(manager._planned_assignments(account["id"], goal, "Make the message concise."))
+    assert task_ids[1] in revised_ids
+    with SessionLocal() as session:
+        revised = session.get(GoalAssignment, task_ids[1])
+        assert revised and revised.title == "Send concise outcome"
+        assert revised.instruction == "Send a concise verified outcome to the client."
+        first = session.get(GoalAssignment, task_ids[0])
+        assert first
+        first.status = "running"
+        first.phase = "working"
+        session.commit()
+
+    steer_plan = GoalPlan(operations=[GoalTaskOperation(action="steer", task_id=task_ids[0], instruction="Prepare the verified outcome using the new client constraint.")])
+    with patch("app.goal_tasks.create_goal_planner_runner"), patch("app.goal_tasks.plan_goal", new=AsyncMock(return_value=steer_plan)):
+        asyncio.run(manager._planned_assignments(account["id"], goal, "Apply the new client constraint."))
+    with SessionLocal() as session:
+        steered = session.get(GoalAssignment, task_ids[0])
+        assert steered and steered.status == "queued"
+        assert steered.instruction == "Prepare the verified outcome using the new client constraint."
+
+    cancel_plan = GoalPlan(operations=[GoalTaskOperation(action="cancel", task_id=task_ids[1])])
+    with patch("app.goal_tasks.create_goal_planner_runner"), patch("app.goal_tasks.plan_goal", new=AsyncMock(return_value=cancel_plan)):
+        remaining = asyncio.run(manager._planned_assignments(account["id"], goal, "Cancel the send step."))
+    assert task_ids[0] in remaining
+    with SessionLocal() as session:
+        cancelled = session.get(GoalAssignment, task_ids[1])
+        assert cancelled and cancelled.status == "cancelled"
+
+    reuse_plan = GoalPlan(operations=[GoalTaskOperation(action="reuse", task_id=task_ids[0])])
+    with patch("app.goal_tasks.create_goal_planner_runner"), patch("app.goal_tasks.plan_goal", new=AsyncMock(return_value=reuse_plan)):
+        reused = asyncio.run(manager._planned_assignments(account["id"], goal, "Continue the prepared outcome."))
+    assert reused == [task_ids[0]]
+
+
+def test_restart_requeues_the_same_running_task_identity() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "recover-task@example.com", "Recover Task")
+        goal_payload = client.post("/api/goals", headers=account_headers(account["id"]), json={
+            "client_id": "recover-client",
+            "text": "Resume this exact task after restart.",
+            "skill_ids": [],
+            "plugin_ids": [],
+        }).json()
+    with SessionLocal() as session:
+        assignment = GoalAssignment(goal_id=goal_payload["id"], title="Read client evidence", instruction="Read the client evidence.", status="running", phase="working", current_step="Reading the client evidence.")
+        session.add(assignment)
+        session.commit()
+        task_id = assignment.id
+
+    manager = GoalTaskManager()
+    with patch.object(manager, "start", new=AsyncMock(return_value=True)) as start:
+        asyncio.run(manager.recover())
+    assert (account["id"], goal_payload["id"]) in [call.args for call in start.await_args_list]
+    with SessionLocal() as session:
+        recovered = session.get(GoalAssignment, task_id)
+        assert recovered and recovered.status == "queued"
+        assert recovered.current_step == "Reading the client evidence."
+        assert recovered.finished_at is None
+
+
+def test_browser_preview_is_persisted_and_account_scoped() -> None:
+    with TestClient(app) as client:
+        owner = create_account(client, "preview-owner@example.com", "Preview Owner")
+        stranger = create_account(client, "preview-stranger@example.com", "Preview Stranger")
+        goal_payload = client.post("/api/goals", headers=account_headers(owner["id"]), json={
+            "client_id": "preview-client",
+            "text": "Verify a browser page.",
+            "skill_ids": [],
+            "plugin_ids": [],
+        }).json()
+        with SessionLocal() as session:
+            assignment = GoalAssignment(goal_id=goal_payload["id"], title="Verify page", instruction="Verify the page.")
+            session.add(assignment)
+            session.flush()
+            session.add(GoalBrowserPreview(assignment_id=assignment.id, image=b"\x89PNG\r\n", revision="preview-1"))
+            session.commit()
+            task_id = assignment.id
+        owned = client.get(f"/api/browser/previews/{task_id}", headers=account_headers(owner["id"]))
+        assert owned.status_code == 200
+        assert owned.content == b"\x89PNG\r\n"
+        assert owned.headers["content-type"] == "image/png"
+        assert client.get(f"/api/browser/previews/{task_id}", headers=account_headers(stranger["id"])).status_code == 404
+
+
+def test_goals_chat_routes_all_board_changes_through_the_planner() -> None:
+    tool_names = {getattr(tool, "name", tool.__name__) for tool in create_goals_chat_app().root_agent.tools}
+    assert tool_names == {"list_goal_tasks", "revise_goal_plan"}
+
+
+def test_goal_worker_rejects_parallel_calls_without_stopping_after_failure() -> None:
     tool = MagicMock(name="browser_tabs")
     tool.name = "browser_tabs"
     context = MagicMock()
     context.state = {}
     context.actions = MagicMock()
 
-    assert begin_single_tool(tool, {}, context) is None
-    rejected = begin_single_tool(tool, {}, context)
-    assert rejected == {"status": "failed", "error": "Parallel tool call rejected: browser_tabs."}
-    assert context.actions.end_of_agent is True
+    assert asyncio.run(begin_single_tool(tool, {}, context)) is None
+    rejected = asyncio.run(begin_single_tool(tool, {}, context))
+    assert rejected == {"status": "failed", "error": "Parallel tool call rejected: browser_tabs. Call one tool at a time."}
+    assert context.actions.end_of_agent is not True
 
     context.state = {"goal_tool_in_flight": True}
     finish_single_tool(tool, {}, context, {"status": "failed", "error": "timeout"})
     assert context.state["goal_tool_in_flight"] is False
-    assert context.state["goal_terminal_tool_error"] is True
+    assert "goal_terminal_tool_error" not in context.state
+
+
+def test_browser_tool_publishes_action_and_goal_intent() -> None:
+    calls: list[tuple[str, dict[str, str]]] = []
+
+    class Session:
+        async def call_tool(self, name: str, arguments: dict[str, str]):
+            calls.append((name, arguments))
+            return SimpleNamespace(isError=False)
+
+    tool = MagicMock()
+    tool.name = "browser_click"
+    tool._mcp_session_manager.create_session = AsyncMock(return_value=Session())
+    context = MagicMock()
+    context.state = {"goal_intent": "Confirm the client's portal access"}
+    context.actions = MagicMock()
+
+    assert asyncio.run(begin_single_tool(tool, {"element": "Continue button"}, context)) is None
+    assert calls[0][0] == "browser_evaluate"
+    function = calls[0][1]["function"]
+    assert "Clicking Continue button" in function
+    assert "Confirm the client's portal access" in function
+
+
+def test_event_stream_emits_keepalive_while_idle() -> None:
+    broker = AccountEventBroker()
+
+    async def exercise() -> None:
+        with patch("app.event_stream.KEEPALIVE_SECONDS", 0.001):
+            stream = broker.subscribe("account")
+            assert "ready" in await anext(stream)
+            assert await anext(stream) == ": keepalive\n\n"
+            await stream.aclose()
+
+    asyncio.run(exercise())
 
 
 def test_browser_preflight_executes_a_real_tabs_command() -> None:
@@ -414,6 +678,26 @@ def test_browser_preflight_executes_a_real_tabs_command() -> None:
 
     asyncio.run(exercise())
     call_tool.assert_awaited_once_with("browser_tabs", arguments={"action": "list"})
+
+
+def test_browser_preview_capture_reads_the_task_scoped_screenshot() -> None:
+    async def exercise() -> bytes:
+        with TemporaryDirectory() as directory:
+            output = playwright_browser.Path(directory)
+
+            async def capture(_: str, arguments: dict[str, str]):
+                (output / arguments["filename"]).write_bytes(b"browser-preview")
+                return SimpleNamespace(isError=False, content=[])
+
+            session = SimpleNamespace(call_tool=AsyncMock(side_effect=capture))
+            screenshot = SimpleNamespace(name="browser_take_screenshot", _mcp_session_manager=SimpleNamespace(create_session=AsyncMock(return_value=session)))
+            toolset = SimpleNamespace(get_tools=AsyncMock(return_value=[screenshot]))
+            with patch.object(playwright_browser, "PLAYWRIGHT_OUTPUT_DIR", output):
+                image = await playwright_browser.capture_browser_preview(toolset, "task-123")
+            session.call_tool.assert_awaited_once_with("browser_take_screenshot", arguments={"type": "png", "filename": "goal-task-123.png"})
+            return image
+
+    assert asyncio.run(exercise()) == b"browser-preview"
 
 def test_voice_ticket_is_authenticated_scoped_and_uses_sherpa_live_contract() -> None:
     with TestClient(app) as client:
