@@ -1,0 +1,16 @@
+.editor { display: grid; width: 100%; min-height: 100%; grid-template-rows: 48px auto; }
+.editor > header { display: grid; padding: 0 8px; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 7px; }
+.editor > header > button { display: grid; width: 30px; height: 30px; padding: 0; place-items: center; border: 0; border-radius: 9px; background: transparent; color: #62625e; cursor: pointer; }
+.editor > header > button:hover { background: #eeeeec; }
+.editor > header > button svg { width: 16px; height: 16px; }
+.editor > header span { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.editor > header span svg { width: 15px; height: 15px; color: #5c8fc4; }
+.editor > header strong { overflow: hidden; font-size: 11px; font-weight: 570; text-overflow: ellipsis; white-space: nowrap; }
+.editor > header button.save { display: flex; width: auto; padding: 0 11px; align-items: center; gap: 6px; background: #30302e; color: #fff; font-size: 11px; }
+.editor > header button.save:disabled { opacity: .32; cursor: default; }
+.editor article { display: grid; width: min(720px, calc(100% - 64px)); min-height: calc(100svh - 120px); margin: 0 auto; padding: 42px 0 48px; grid-template-rows: auto auto auto minmax(340px, 1fr) auto; }
+.editor h1 { margin: 0; color: #30302e; font-size: 26px; font-weight: 570; letter-spacing: -.03em; }
+.editor article > p { margin: 11px 0 0; color: #858581; font-size: 12px; }
+.editor label { margin-top: 38px; color: #6f6f6b; font-size: 11px; font-weight: 590; }
+.editor textarea { min-height: 340px; margin-top: 12px; resize: none; border: 0; outline: 0; background: transparent; color: #30302e; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.7; }
+.editor small[role="alert"] { margin-top: 12px; color: #a5322d; font-size: 11px; }

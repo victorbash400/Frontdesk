@@ -26,9 +26,14 @@
   gap: 8px;
 }
 
-.sidebar > header svg {
+.sidebar > header svg,
+.sidebar > header img {
   width: 18px;
   height: 18px;
+  object-fit: contain;
+}
+
+.sidebar > header svg {
   stroke-width: 1.7;
 }
 

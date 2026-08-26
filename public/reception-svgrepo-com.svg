@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg width="800px" height="800px" viewBox="0 0 24 24" id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<defs>
+<style>.cls-1{fill:none;}.cls-2{clip-path:url(#clip-path);}</style>
+<clipPath id="clip-path">
+<rect class="cls-1" width="24" height="24"/>
+</clipPath>
+</defs>
+<title>reception</title>
+<g class="cls-2">
+<path d="M19.89,22.5H4.11A3.11,3.11,0,0,1,1,19.39V14.61A3.11,3.11,0,0,1,4.11,11.5H19.89A3.11,3.11,0,0,1,23,14.61v4.78A3.11,3.11,0,0,1,19.89,22.5Zm-15.78-9A1.11,1.11,0,0,0,3,14.61v4.78A1.11,1.11,0,0,0,4.11,20.5H19.89A1.11,1.11,0,0,0,21,19.39V14.61a1.11,1.11,0,0,0-1.11-1.11Z"/>
+<path d="M20,10.5H12a1,1,0,0,1-1-1v-7a1,1,0,0,1,1-1h8a1,1,0,0,1,1,1v7A1,1,0,0,1,20,10.5Zm-7-2h6v-5H13Z"/>
+<path d="M16,13.5a1,1,0,0,1-1-1v-6a1,1,0,0,1,2,0v6A1,1,0,0,1,16,13.5Z"/>
+</g>
+</svg>

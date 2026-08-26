@@ -6,6 +6,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Front Desk",
   description: "Front Desk",
+  icons: {
+    icon: "/reception-svgrepo-com.svg",
+  },
 };
 
 type RootLayoutProps = {

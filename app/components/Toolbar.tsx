@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Ellipsis, LayoutGrid, List, ListFilter, Search, Share, Tag } from "lucide-react";
+import { ChevronLeft, ChevronRight, Columns3, Ellipsis, LayoutGrid, List, ListFilter, Search, Share } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import type { BreadcrumbItem, Destination, SortMode, ViewMode } from "../types/filesystem";
@@ -9,6 +9,7 @@ import styles from "./Toolbar.module.css";
 const viewModes: Array<{ mode: ViewMode; label: string; icon: typeof LayoutGrid }> = [
   { mode: "grid", label: "Grid view", icon: LayoutGrid },
   { mode: "list", label: "List view", icon: List },
+  { mode: "columns", label: "Column view", icon: Columns3 },
 ];
 
 type ToolbarProps = {
@@ -32,14 +33,13 @@ type ToolbarProps = {
   onCreateFolder: () => void;
   onChatToggle: () => void;
   onVoiceToggle: () => void;
-  onInspectorToggle: () => void;
   onShare: () => void;
   onQueryChange: (query: string) => void;
   onSortChange: (sort: SortMode) => void;
   onViewModeChange: (mode: ViewMode) => void;
 };
 
-export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, hasSelection, chatAvailable, chatOpen, clientId, query, sort, viewMode, voiceOpen, utilityView = false, onBack, onBreadcrumbNavigate, onForward, onCreateClient, onCreateFolder, onChatToggle, onVoiceToggle, onInspectorToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
+export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, hasSelection, chatAvailable, chatOpen, clientId, query, sort, viewMode, voiceOpen, utilityView = false, onBack, onBreadcrumbNavigate, onForward, onCreateClient, onCreateFolder, onChatToggle, onVoiceToggle, onShare, onQueryChange, onSortChange, onViewModeChange }: ToolbarProps) {
   const canCreateFolder = destination.type === "folder";
 
   function closeMenu(event: MouseEvent<HTMLButtonElement>) {
@@ -74,13 +74,11 @@ export function Toolbar({ destination, breadcrumbs, canGoBack, canGoForward, has
         </label>
         <span className={styles.actions}>
           <button aria-label="Share" disabled={!hasSelection} onClick={onShare} title="Share" type="button"><Share /></button>
-          <button aria-label="Tags" disabled={!hasSelection} onClick={onInspectorToggle} title="Tags" type="button"><Tag /></button>
           <details className={styles.more}>
             <summary aria-label="More" title="More"><Ellipsis /></summary>
             <menu>
               {canCreateFolder ? <button onClick={(event) => { closeMenu(event); onCreateFolder(); }} type="button">New Folder</button> : null}
               {!canCreateFolder ? <button onClick={(event) => { closeMenu(event); onCreateClient(); }} type="button">New Client</button> : null}
-              {hasSelection ? <button onClick={(event) => { closeMenu(event); onInspectorToggle(); }} type="button">Get Info</button> : null}
             </menu>
           </details>
         </span>

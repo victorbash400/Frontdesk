@@ -11,8 +11,8 @@ import { CreateItemDialog } from "./CreateItemDialog";
 import { ClientChatPanel } from "./ClientChatPanel";
 import { ClientVoicePanel } from "./ClientVoicePanel";
 import { ClientProfileEditor } from "./ClientProfileEditor";
+import { MarkdownDocumentEditor } from "./MarkdownDocumentEditor";
 import { ExplorerContent } from "./ExplorerContent";
-import { Inspector } from "./Inspector";
 import { ItemContextMenu, type ContextMenuState } from "./ItemContextMenu";
 import { PluginStore } from "./PluginStore";
 import { Sidebar } from "./Sidebar";
@@ -27,11 +27,10 @@ type DialogState = { mode: "create-client" | "create-folder" | "rename"; node?: 
 export function OperatorShell({ account }: { account: OperatorAccount }) {
   const fileSystem = useFileSystem(account.id);
   const navigation = useNavigationHistory();
-  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
-  const [openProfileId, setOpenProfileId] = useState<string>();
+  const [openFileId, setOpenFileId] = useState<string>();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [sort, setSort] = useState<SortMode>("name-asc");
   const [query, setQuery] = useState("");
@@ -47,7 +46,7 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
   }, [deferredQuery, fileSystem.data.nodes, navigation.destination, sort]);
 
   const selectedNode = visibleNodes.find((node) => node.id === selectedId);
-  const openProfile = fileSystem.data.nodes.find((node) => node.id === openProfileId && node.kind === "profile");
+  const openFile = fileSystem.data.nodes.find((node) => node.id === openFileId && (node.kind === "profile" || node.kind === "document"));
   const breadcrumbs = useMemo(() => breadcrumbsForDestination(fileSystem.data.nodes, navigation.destination), [fileSystem.data.nodes, navigation.destination]);
   const client = useMemo(() => {
     const destination = navigation.destination;
@@ -58,27 +57,24 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
   const canCreate = navigation.destination.type === "folder" || navigation.destination.type === "location" && navigation.destination.location === "clients";
   const taskView = navigation.destination.type === "location" && navigation.destination.location === "tasks";
   const goalView = navigation.destination.type === "location" && navigation.destination.location === "goals";
-  const utilityView = Boolean(openProfile) || taskView || goalView || navigation.destination.type === "location" && (navigation.destination.location === "plugins" || navigation.destination.location === "skills");
+  const utilityView = Boolean(openFile) || taskView || goalView || navigation.destination.type === "location" && (navigation.destination.location === "plugins" || navigation.destination.location === "skills");
+  const explorerKey = navigation.destination.type === "folder" ? `folder-${navigation.destination.id}` : `location-${navigation.destination.location}`;
 
   function navigate(destination: Parameters<typeof navigation.navigate>[0]) {
     navigation.navigate(destination);
     if (destination.type === "location") { setChatOpen(false); setVoiceOpen(false); }
     setSelectedId(undefined);
-    setOpenProfileId(undefined);
+    setOpenFileId(undefined);
     setContextMenu(undefined);
   }
 
   function openNode(node: FileSystemNode) {
     if (isContainer(node)) navigate({ type: "folder", id: node.id });
-    else if (node.kind === "profile") {
+    else if (node.kind === "profile" || node.kind === "document") {
       setSelectedId(node.id);
-      setOpenProfileId(node.id);
-      setInspectorOpen(false);
+      setOpenFileId(node.id);
     }
-    else {
-      setSelectedId(node.id);
-      setInspectorOpen(true);
-    }
+    else setSelectedId(node.id);
   }
 
   function createItem(name: string, mode: "create-client" | "create-folder") {
@@ -135,17 +131,17 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
     <main className={styles.shell} onKeyDown={handleKeyboard} style={tagVariables} tabIndex={-1}>
       <Sidebar account={account} destination={navigation.destination} onCreateClient={() => setDialog({ mode: "create-client" })} onNavigate={navigate} />
       <section className={styles.explorer}>
-        <Toolbar breadcrumbs={breadcrumbs} canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} chatAvailable={Boolean(client)} chatOpen={chatOpen} clientId={client?.id} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={() => { navigation.back(); setOpenProfileId(undefined); }} onBreadcrumbNavigate={navigate} onChatToggle={() => { setVoiceOpen(false); setChatOpen((current) => !current); }} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={() => { navigation.forward(); setOpenProfileId(undefined); }} onInspectorToggle={() => setInspectorOpen((current) => !current)} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} onVoiceToggle={() => { setChatOpen(false); setVoiceOpen((current) => !current); }} query={query} sort={sort} utilityView={utilityView} viewMode={viewMode} voiceOpen={voiceOpen} />
+        <Toolbar breadcrumbs={breadcrumbs} canGoBack={navigation.canGoBack} canGoForward={navigation.canGoForward} chatAvailable={Boolean(client)} chatOpen={chatOpen} clientId={client?.id} destination={navigation.destination} hasSelection={Boolean(selectedNode)} onBack={() => { navigation.back(); setOpenFileId(undefined); }} onBreadcrumbNavigate={navigate} onChatToggle={() => { setVoiceOpen(false); setChatOpen((current) => !current); }} onCreateClient={() => setDialog({ mode: "create-client" })} onCreateFolder={() => setDialog({ mode: "create-folder" })} onForward={() => { navigation.forward(); setOpenFileId(undefined); }} onQueryChange={setQuery} onShare={() => selectedNode && fileSystem.updateNode(selectedNode.id, { shared: true })} onSortChange={setSort} onViewModeChange={setViewMode} onVoiceToggle={() => { setChatOpen(false); setVoiceOpen((current) => !current); }} query={query} sort={sort} utilityView={utilityView} viewMode={viewMode} voiceOpen={voiceOpen} />
         <section className={styles.workspace}>
           <section className={styles.browser} onClick={() => setContextMenu(undefined)}>
             {navigation.destination.type === "location" && navigation.destination.location === "plugins" ? <PluginStore accountId={account.id} /> : null}
             {navigation.destination.type === "location" && navigation.destination.location === "skills" ? <SkillsLibrary accountId={account.id} /> : null}
             {taskView ? <TasksWorkspace accountId={account.id} clients={clients} /> : null}
             {goalView ? <GoalsWorkspace accountId={account.id} clients={clients} /> : null}
-            {openProfile && client ? <ClientProfileEditor clientName={client.name} key={`${openProfile.id}-${openProfile.updatedAt}`} onBack={() => setOpenProfileId(undefined)} onSave={(content) => fileSystem.updateNode(openProfile.id, { content })} profile={openProfile} /> : null}
-            {!utilityView ? <ExplorerContent nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} onRename={(node) => setDialog({ mode: "rename", node })} onTrashToggle={(node) => { fileSystem.setTrashed(node.id, !node.trashedAt); setSelectedId(undefined); }} selectedNode={selectedNode} viewMode={viewMode} /> : null}
+            {openFile?.kind === "profile" && client ? <ClientProfileEditor clientName={client.name} key={`${openFile.id}-${openFile.updatedAt}`} onBack={() => setOpenFileId(undefined)} onSave={(content) => fileSystem.updateNode(openFile.id, { content })} profile={openFile} /> : null}
+            {openFile?.kind === "document" ? <MarkdownDocumentEditor document={openFile} key={`${openFile.id}-${openFile.updatedAt}`} onBack={() => setOpenFileId(undefined)} onSave={(content) => fileSystem.updateNode(openFile.id, { content })} /> : null}
+            {!utilityView ? <ExplorerContent allNodes={fileSystem.data.nodes} destination={navigation.destination} key={explorerKey} nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} onSelect={(node) => setSelectedId(node.id)} onRename={(node) => setDialog({ mode: "rename", node })} onTrashToggle={(node) => { fileSystem.setTrashed(node.id, !node.trashedAt); setSelectedId(undefined); }} selectedNode={selectedNode} viewMode={viewMode} /> : null}
           </section>
-          {inspectorOpen && !utilityView ? <Inspector node={selectedNode} onToggleTag={(tag) => selectedNode && fileSystem.toggleTag(selectedNode.id, tag)} /> : null}
           {client ? <ClientChatPanel accountId={account.id} clientId={client.id} key={client.id} open={chatOpen} /> : null}
           {client ? <ClientVoicePanel accountId={account.id} clientId={client.id} key={`voice-${client.id}`} open={voiceOpen} /> : null}
         </section>

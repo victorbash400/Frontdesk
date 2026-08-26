@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { loadFileSystem, saveFileSystem } from "../lib/fileSystemStorage";
+import { loadFileSystem, saveFileSystem, syncFileSystem } from "../lib/fileSystemStorage";
 import { hasSiblingName } from "../lib/fileSystemNames";
 import type { FileSystemData, FileSystemNode, NodeKind, TagName } from "../types/filesystem";
 
@@ -16,7 +16,9 @@ export function useFileSystem(accountId: string) {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       try {
-        setData(loadFileSystem(accountId));
+        const stored = loadFileSystem(accountId);
+        setData(stored);
+        void syncFileSystem(stored).catch((reason) => setError(messageFrom(reason, "Could not synchronize the client folders.")));
       } catch (reason) {
         setError(messageFrom(reason, "Could not load the filesystem."));
       } finally {
@@ -32,6 +34,7 @@ export function useFileSystem(accountId: string) {
       const next = update(current);
       try {
         saveFileSystem(accountId, next);
+        void syncFileSystem(next).catch((reason) => setError(messageFrom(reason, "Could not synchronize the client folders.")));
         setError(undefined);
         return next;
       } catch (reason) {

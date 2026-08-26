@@ -1,0 +1,48 @@
+.browser {
+  display: flex;
+  min-width: 100%;
+  min-height: 100%;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: #fff;
+}
+
+.column {
+  width: 260px;
+  min-width: 260px;
+  padding: 7px 8px 20px;
+  overflow-y: auto;
+  border-right: 1px solid #e5e5e3;
+}
+
+.item {
+  display: grid;
+  width: 100%;
+  height: 30px;
+  padding: 0 7px;
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #333330;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+}
+
+.item:hover { background: #f1f1ef; }
+.item[aria-pressed="true"] { background: #087cf0; color: #fff; }
+.item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item i { width: 7px; height: 7px; border-radius: 50%; }
+.item > svg:last-child { width: 13px; height: 13px; }
+
+.preview {
+  width: min(620px, 45vw);
+  min-width: 420px;
+  min-height: 100%;
+  flex: 1 0 420px;
+}

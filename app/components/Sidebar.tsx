@@ -1,4 +1,5 @@
-import { BookOpenCheck, Command, FileText, Folder, ListTodo, Mail, Phone, Plus, Puzzle, Trash2, type LucideIcon } from "lucide-react";
+import Image from "next/image";
+import { BookOpenCheck, FileText, Folder, ListTodo, Mail, Phone, Plus, Puzzle, Trash2, type LucideIcon } from "lucide-react";
 
 import { locationLabels } from "../lib/fileSystemSelectors";
 import type { Destination, SmartLocation } from "../types/filesystem";
@@ -30,7 +31,7 @@ export function Sidebar({ account, destination, onCreateClient, onNavigate }: Si
   return (
     <aside className={styles.sidebar}>
       <header>
-        <Command aria-hidden="true" />
+        <Image alt="" aria-hidden="true" height={18} priority src="/reception-svgrepo-com.svg" width={18} />
         <strong>Front Desk</strong>
         <AccountButton email={account.email} name={account.name} />
       </header>
