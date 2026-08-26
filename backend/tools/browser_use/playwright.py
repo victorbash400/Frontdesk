@@ -9,7 +9,34 @@ from app.config import PROJECT_ROOT, get_settings
 
 PLAYWRIGHT_MCP_BINARY = PROJECT_ROOT / "node_modules" / ".bin" / "playwright-mcp"
 PLAYWRIGHT_OUTPUT_DIR = PROJECT_ROOT / "backend" / ".browser-artifacts"
-BROWSER_COMMAND_TIMEOUT_SECONDS = 5
+BROWSER_COMMAND_TIMEOUT_SECONDS = 60
+PLAYWRIGHT_ALLOWED_TOOLS = [
+    "browser_click",
+    "browser_close",
+    "browser_console_messages",
+    "browser_drag",
+    "browser_drop",
+    "browser_evaluate",
+    "browser_file_upload",
+    "browser_fill_form",
+    "browser_find",
+    "browser_handle_dialog",
+    "browser_hover",
+    "browser_navigate",
+    "browser_navigate_back",
+    "browser_network_request",
+    "browser_network_requests",
+    "browser_press_key",
+    "browser_resize",
+    "browser_select_option",
+    "browser_snapshot",
+    "browser_tabs",
+    "browser_take_screenshot",
+    "browser_type",
+    "browser_wait_for",
+]
+
+
 async def connected_playwright_toolset() -> McpToolset:
     """Prove Chrome can answer a command before a model invocation starts."""
     toolset = create_playwright_toolset()
@@ -60,6 +87,7 @@ def create_playwright_toolset() -> McpToolset:
             ),
             timeout=BROWSER_COMMAND_TIMEOUT_SECONDS,
         ),
+        tool_filter=PLAYWRIGHT_ALLOWED_TOOLS,
         use_mcp_resources=False,
     )
 

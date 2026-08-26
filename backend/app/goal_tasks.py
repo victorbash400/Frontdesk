@@ -129,8 +129,6 @@ class GoalTaskManager:
                             blocked = bool(payload.get("blocking"))
                         else:
                             account_events.publish(account_id, {"type": "goal_tool_result", "goal_id": goal_id, "name": response.name, "status": "done"})
-                    if terminal_tool_error:
-                        break
                 if terminal_tool_error:
                     raise RuntimeError(terminal_tool_error)
                 if blocked:

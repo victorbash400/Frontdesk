@@ -94,7 +94,9 @@ class PlaywrightExtension {
         throw new Error('Pending client connection closed');
 
       const id = ++this._lastConnectionId;
-      const browser = new ConnectedBrowser(connection, clientName);
+      const selectorTab = await chrome.tabs.get(selectorTabId);
+      const returnTabId = await this._returnTabId(selectorTab);
+      const browser = new ConnectedBrowser(connection, clientName, returnTabId);
       browser.onclose = () => this._connections.delete(id);
       this._connections.set(id, browser);
       const selectedTab = await this._initialTab(selectorTabId);
@@ -107,12 +109,26 @@ class PlaywrightExtension {
   }
 
   private async _initialTab(selectorTabId: number): Promise<chrome.tabs.Tab> {
-    const active = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    const tabs = await chrome.tabs.query({});
-    const selected = [...active, ...tabs].find(tab => tab.id !== selectorTabId && !isNonDebuggableUrl(tab.url));
-    if (selected)
-      return selected;
-    return chrome.tabs.create({ url: 'about:blank', active: false });
+    const selectorTab = await chrome.tabs.get(selectorTabId);
+    return chrome.tabs.create({
+      // Playwright cannot navigate an extension-created about:blank target:
+      // Chrome treats it as extension-owned and rejects Page.navigate. Start
+      // on a normal permitted page so the first browser_navigate can reuse it.
+      url: 'https://example.com/',
+      active: false,
+      windowId: selectorTab.windowId,
+      index: selectorTab.index + 1,
+    });
+  }
+
+  private async _returnTabId(selectorTab: chrome.tabs.Tab): Promise<number | undefined> {
+    const tabs = await chrome.tabs.query({ windowId: selectorTab.windowId });
+    const frontDeskTab = tabs.find(tab => tab.id !== selectorTab.id && (
+      tab.title === 'Front Desk'
+      || tab.url?.startsWith('http://localhost:3000')
+      || tab.url?.startsWith('http://127.0.0.1:3000')
+    ));
+    return frontDeskTab?.id ?? selectorTab.openerTabId;
   }
 
   // Chrome may create the connect page inside the active client's group.

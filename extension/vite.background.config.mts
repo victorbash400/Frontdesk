@@ -9,8 +9,11 @@ export default defineConfig({
     emptyOutDir: false,
     minify: false,
     lib: {
-      entry: resolve(extensionRoot, 'src/background.ts'),
-      fileName: 'background',
+      entry: {
+        background: resolve(extensionRoot, 'src/background.ts'),
+        content: resolve(extensionRoot, 'src/content.ts'),
+      },
+      fileName: (_format, entryName) => entryName === 'background' ? 'background.mjs' : 'content.js',
       formats: ['es'],
     },
   },

@@ -7,6 +7,8 @@
     "debugger",
     "activeTab",
     "tabs",
+    "tabGroups",
+    "scripting",
     "downloads"
   ],
   "host_permissions": [
@@ -16,6 +18,20 @@
     "service_worker": "lib/background.mjs",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["lib/content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["cursor-alt-svgrepo-com.svg"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "action": {
     "default_title": "Front Desk Browser Use",
     "default_icon": {

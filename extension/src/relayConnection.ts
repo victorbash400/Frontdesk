@@ -72,6 +72,9 @@ export class RelayConnection {
   onclose?: () => void;
   ontabattached?: (tabId: number) => void;
   ontabdetached?: (tabId: number) => void;
+  private _preferredWindowId?: number;
+  private _focusedTabId?: number;
+  private _bootstrapTabId?: number;
 
   get attachedTabs(): ReadonlySet<number> {
     return this._attachedTabs;
@@ -90,6 +93,14 @@ export class RelayConnection {
   // answered from a populated tab model.
   didInitialize(): void {
     this._sendMessage({ method: 'extension.initialized', params: [] });
+  }
+
+  setPreferredWindowId(windowId: number): void {
+    this._preferredWindowId = windowId;
+  }
+
+  setBootstrapTabId(tabId: number): void {
+    this._bootstrapTabId = tabId;
   }
 
   close(message: string): void {
@@ -133,6 +144,11 @@ export class RelayConnection {
     this._hasEverAttached = true;
     this._pendingReattach.delete(tabId);
     this.ontabattached?.(tabId);
+    if (this._bootstrapTabId !== undefined && tabId !== this._bootstrapTabId) {
+      const bootstrapTabId = this._bootstrapTabId;
+      this._bootstrapTabId = undefined;
+      void chrome.tabs.remove(bootstrapTabId).catch(() => {});
+    }
   }
 
   private _notifyTabDetached(tabId: number): void {
@@ -179,6 +195,8 @@ export class RelayConnection {
     if (tabId === undefined || !this._attachedTabs.has(tabId))
       return;
     this._sendMessage({ method: fullMethod, params: args });
+    if (fullMethod === 'chrome.debugger.onEvent' && args[1] === 'Page.loadEventFired')
+      void this._deliverBrowserAction(tabId, { kind: 'navigate', label: 'Working in this tab' });
     // chrome.debugger.onDetach is the single source of truth for detach bookkeeping.
     if (fullMethod === 'chrome.debugger.onDetach') {
       const reason = args[1] as string | undefined;
@@ -282,6 +300,24 @@ export class RelayConnection {
     if (!ALLOWED_CHROME_COMMANDS.has(message.method))
       throw new Error(`Unknown method: ${message.method}`);
     const args = (message.params ?? []) as any[];
+    if (message.method === 'chrome.tabs.create') {
+      const createProperties = { ...(args[0] || {}) };
+      if (this._preferredWindowId !== undefined)
+        createProperties.windowId = this._preferredWindowId;
+      // Playwright's extension transport creates its page as about:blank.
+      // Chrome considers that target extension-owned, so its first
+      // Page.navigate is rejected. Give the target a permitted origin while
+      // preserving Playwright's normal new-page lifecycle.
+      if (!createProperties.url || createProperties.url === 'about:blank')
+        createProperties.url = 'https://example.com/';
+      args[0] = createProperties;
+    }
+    if (message.method === 'chrome.debugger.sendCommand') {
+      const target = args[0] as chrome.debugger.Debuggee | undefined;
+      if (target?.tabId !== undefined)
+        await this._focusTab(target.tabId);
+      await this._showBrowserAction(args);
+    }
     const result = await invokeChromeMethod(message.method, args);
     // Attach bookkeeping; detach flows through the chrome.debugger.onDetach event.
     if (message.method === 'chrome.debugger.attach') {
@@ -290,6 +326,56 @@ export class RelayConnection {
         this._notifyTabAttached(target.tabId);
     }
     return result ?? {};
+  }
+
+  private async _showBrowserAction(args: any[]): Promise<void> {
+    const target = args[0] as chrome.debugger.Debuggee | undefined;
+    const method = args[1] as string | undefined;
+    const params = args[2] as Record<string, unknown> | undefined;
+    if (target?.tabId === undefined || !method || !params)
+      return;
+    let action: { kind: string; label?: string; x?: number; y?: number } | undefined;
+    if (method === 'Input.dispatchMouseEvent') {
+      const type = params.type;
+      if (type === 'mouseMoved')
+        action = { kind: 'move', x: Number(params.x), y: Number(params.y) };
+      if (type === 'mousePressed')
+        action = { kind: 'click', x: Number(params.x), y: Number(params.y) };
+    } else if (method === 'Input.insertText') {
+      action = { kind: 'type' };
+    } else if (method === 'Input.dispatchKeyEvent' && params.type === 'keyDown') {
+      action = { kind: 'key' };
+    } else if (method === 'Page.navigate' && typeof params.url === 'string') {
+      action = { kind: 'navigate', label: navigationLabel(params.url) };
+    }
+    if (!action)
+      return;
+    await this._deliverBrowserAction(target.tabId, action);
+    if (action.kind === 'click')
+      await new Promise<void>(resolve => setTimeout(resolve, 620));
+  }
+
+  private async _focusTab(tabId: number): Promise<void> {
+    if (this._focusedTabId === tabId)
+      return;
+    const tab = await chrome.tabs.update(tabId, { active: true });
+    if (!tab)
+      throw new Error(`Could not activate controlled tab ${tabId}.`);
+    await chrome.windows.update(tab.windowId, { focused: true });
+    this._focusedTabId = tabId;
+  }
+
+  private async _deliverBrowserAction(tabId: number, action: { kind: string; label?: string; x?: number; y?: number }): Promise<void> {
+    const message = { type: 'frontDeskBrowserAction', ...action };
+    try {
+      await chrome.tabs.sendMessage(tabId, message);
+      return;
+    } catch {
+      // Navigations and extension reloads can leave an already-open page without
+      // the declared content script. Inject it immediately and retry once.
+    }
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['lib/content.js'] });
+    await chrome.tabs.sendMessage(tabId, message);
   }
 
   private _sendError(code: number, message: string): void {
@@ -304,6 +390,15 @@ export class RelayConnection {
   private _sendMessage(message: any): void {
     if (this._ws.readyState === WebSocket.OPEN)
       this._ws.send(JSON.stringify(message));
+  }
+}
+
+function navigationLabel(url: string): string {
+  try {
+    const target = new URL(url);
+    return target.hostname ? `Opening ${target.hostname}` : 'Opening page';
+  } catch {
+    return 'Opening page';
   }
 }
 
