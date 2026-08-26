@@ -1,0 +1,10 @@
+.preview { position: relative; display: grid; min-height: 124px; margin: 2px 0 13px 13px; overflow: hidden; place-content: center; justify-items: center; gap: 9px; border: 1px solid #ecece7; border-radius: 15px; color: #343431; background: #fafaf8; text-align: center; }
+.icon { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid #e4e4df; border-radius: 11px; color: #676762; background: #f0f0ec; }
+.icon svg { width: 18px; height: 18px; stroke-width: 1.7; }
+.copy { display: grid; max-width: min(360px, calc(100% - 32px)); gap: 3px; }
+.copy small { color: #92928c; font-size: 9px; font-weight: 650; letter-spacing: .055em; text-transform: uppercase; }
+.copy strong { overflow: hidden; font-size: 12px; font-weight: 560; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.shimmer { width: 78px; height: 3px; overflow: hidden; border-radius: 999px; background: #e6e6e1; }
+.preview[data-active="true"] .shimmer::after { display: block; width: 34px; height: 100%; background: linear-gradient(90deg, transparent, #8f8f89, transparent); content: ""; animation: goal-work-shimmer 1.1s ease-in-out infinite; }
+@keyframes goal-work-shimmer { from { transform: translateX(-38px); } to { transform: translateX(84px); } }
+@media (prefers-reduced-motion: reduce) { .preview[data-active="true"] .shimmer::after { animation: none; background: #aaa9a2; } }

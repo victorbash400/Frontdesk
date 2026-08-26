@@ -17,13 +17,18 @@
 .panel > header { display: flex; padding: 19px 22px 27px; align-items: flex-start; justify-content: space-between; color: #494946; background: linear-gradient(125deg, #f2f2ef, #fafaf8); font-size: 12px; font-weight: 570; }
 .panel > header small { color: #888883; font-size: 10px; font-weight: 540; }
 .panelActions { display: flex; align-items: center; gap: 9px; }
+.panelTitle { display: flex; align-items: center; gap: 8px; }
+.panelTitle button { display: grid; width: 24px; height: 24px; padding: 0; place-items: center; border: 0; color: #777772; background: transparent; cursor: pointer; }
+.panelTitle button:hover, .panelTitle button[aria-pressed="true"] { color: #30302e; }
+.panelTitle svg { width: 16px; height: 16px; opacity: .58; }
 .panelActions button { display: flex; height: 24px; padding: 0 8px; align-items: center; gap: 5px; border: 1px solid #deded9; border-radius: 7px; color: #5f5f5b; background: rgb(255 255 255 / 65%); font-size: 10px; cursor: pointer; }
 .panelActions button:hover { background: #fff; }
 .panelActions button:disabled { opacity: .4; cursor: default; }
 .panelActions button svg { width: 11px; height: 11px; }
 .panelActions .cancelSelection { border-color: transparent; background: transparent; }
 .panelActions .deleteSelection { border-color: #e5cfcc; color: #9e3f37; }
-.sheet { min-height: 0; margin: -28px 4px 4px; padding: 14px 20px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid #e9e9e5; border-radius: 22px; background: #fff; box-shadow: 0 8px 24px rgb(40 40 36 / 2.5%); }
+.panelBody { display: flex; min-width: 0; min-height: 0; margin: -28px 4px 4px; gap: 8px; }
+.sheet { flex: 1; min-width: 0; min-height: 0; padding: 14px 20px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid #e9e9e5; border-radius: 22px; background: #fff; box-shadow: 0 8px 24px rgb(40 40 36 / 2.5%); }
 .error { margin: 0 0 10px; grid-row: 3; color: #a5322d; font-size: 11px; }
 
 @media (max-width: 860px) {

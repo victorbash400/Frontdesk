@@ -1,6 +1,6 @@
 "use client";
 
-import { ListFilter, Plus, Trash2, UserRound } from "lucide-react";
+import { ListFilter, Plus, SquarePen, Trash2, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useGoals } from "../hooks/useGoals";
@@ -13,6 +13,8 @@ import type { GoalStatus } from "../types/goal";
 import { CreateGoalDialog } from "./CreateGoalDialog";
 import { DeleteGoalsDialog } from "./DeleteGoalsDialog";
 import { GoalList } from "./GoalList";
+import { GoalsChatPanel } from "./GoalsChatPanel";
+import { GoalPreviewPane } from "./GoalPreviewPane";
 import styles from "./GoalsWorkspace.module.css";
 
 type StatusFilter = GoalStatus | "all";
@@ -42,6 +44,7 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
   const [selecting, setSelecting] = useState(false);
   const [selectedGoalIds, setSelectedGoalIds] = useState<Set<string>>(new Set());
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const effectiveClientId = selectedClientId === "all" ? undefined : selectedClientId;
   const availablePlugins = useMemo(() => pluginDirectory.filter((plugin) => plugins.enabledIds.has(plugin.id)), [plugins.enabledIds]);
   const availableSkills = useMemo(() => {
@@ -61,6 +64,7 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
     });
   }, [clients, effectiveClientId, goals, sort, status]);
   const panelTitle = status === "all" ? "All goals" : `${filters.find((filter) => filter.id === status)?.label ?? "Goals"} goals`;
+  const previewGoal = visible.find((goal) => goal.id === selectedGoalId) ?? visible.find((goal) => ["running", "blocked"].includes(liveUpdates[goal.id]?.state ?? goal.runState));
 
   function leaveSelectionMode() {
     setSelecting(false);
@@ -91,7 +95,7 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
       {workspaceError ? <p className={styles.error} role="alert">{workspaceError}</p> : null}
       <section className={styles.panel}>
         <header>
-          <span>{panelTitle}</span>
+          <span className={styles.panelTitle}>{panelTitle}<button aria-label={chatOpen ? "Close Goals chat" : "Open Goals chat"} aria-pressed={chatOpen} onClick={() => setChatOpen((current) => !current)} title="Goals chat" type="button"><SquarePen aria-hidden="true" /></button></span>
           <span className={styles.panelActions}>
             <small>{selecting ? `${selectedGoalIds.size} selected` : visible.length}</small>
             {selecting ? <>
@@ -100,8 +104,12 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
             </> : <button disabled={!visible.length} onClick={() => { setSelectedGoalId(undefined); setSelecting(true); }} type="button">Select</button>}
           </span>
         </header>
-        <section className={styles.sheet}>
-          <GoalList clients={clients} goals={visible} liveUpdates={liveUpdates} onDelete={async (id) => { await deleteGoal(id); setSelectedGoalId(undefined); }} onSelect={setSelectedGoalId} onStatusChange={setGoalStatus} onToggleSelection={toggleGoalSelection} plugins={availablePlugins} selectedId={selectedGoalId} selectedIds={selectedGoalIds} selecting={selecting} />
+        <section className={styles.panelBody}>
+          <section className={styles.sheet}>
+            <GoalList clients={clients} goals={visible} liveUpdates={liveUpdates} onDelete={async (id) => { await deleteGoal(id); setSelectedGoalId(undefined); }} onSelect={setSelectedGoalId} onStatusChange={setGoalStatus} onToggleSelection={toggleGoalSelection} plugins={availablePlugins} selectedId={selectedGoalId} selectedIds={selectedGoalIds} selecting={selecting} />
+          </section>
+          {!chatOpen ? <GoalPreviewPane goal={previewGoal} liveUpdate={previewGoal ? liveUpdates[previewGoal.id] : undefined} /> : null}
+          <GoalsChatPanel accountId={accountId} open={chatOpen} />
         </section>
       </section>
       <CreateGoalDialog clients={clients} onCancel={() => setCreating(false)} onSubmit={async (goalClientId, text, skillIds, pluginIds) => { const goal = await createGoal(goalClientId, text, skillIds, pluginIds); setSelectedGoalId(goal.id); setStatus("active"); setCreating(false); }} open={creating} plugins={availablePlugins} skills={availableSkills} />

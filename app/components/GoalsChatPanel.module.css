@@ -1,0 +1,4 @@
+.panel { position: relative; display: grid; width: 0; min-width: 0; height: 100%; padding: 0; grid-template-rows: 30px minmax(0, 1fr) auto; overflow: hidden; border: 0 solid transparent; border-radius: 18px; background: #fff; opacity: 0; transform: translateX(14px); pointer-events: none; transition: width 240ms cubic-bezier(.22, 1, .36, 1), min-width 240ms cubic-bezier(.22, 1, .36, 1), padding 240ms cubic-bezier(.22, 1, .36, 1), opacity 160ms ease, transform 240ms cubic-bezier(.22, 1, .36, 1); }
+.panel[data-open="true"] { width: clamp(310px, 38%, 380px); min-width: 310px; padding: 12px; border-width: 1px; border-color: #e8e8e4; opacity: 1; transform: translateX(0); pointer-events: auto; }
+@media (max-width: 760px) { .panel[data-open="true"] { width: 46%; min-width: 280px; } }
+@media (prefers-reduced-motion: reduce) { .panel { transition: none; } }

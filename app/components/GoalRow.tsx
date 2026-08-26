@@ -29,7 +29,7 @@ export function GoalRow({ detail, expanded, goal, liveUpdate, onSelect, selected
 
 function marker(goal: OperatorGoal, liveUpdate?: GoalLiveUpdate) {
   const state = rowState(goal, liveUpdate);
-  if (state === "running" || state === "queued") return <LoaderCircle aria-hidden="true" />;
+  if (state === "planning" || state === "running" || state === "queued") return <LoaderCircle aria-hidden="true" />;
   if (state === "failed") return <X aria-hidden="true" />;
   if (state === "completed") return <Check aria-hidden="true" />;
   if (state === "paused" || state === "blocked" || state === "cancelled") return <Pause aria-hidden="true" />;
@@ -37,7 +37,7 @@ function marker(goal: OperatorGoal, liveUpdate?: GoalLiveUpdate) {
 }
 
 function rowState(goal: OperatorGoal, liveUpdate?: GoalLiveUpdate) {
-  if (liveUpdate?.state === "running") return "running";
+  if (liveUpdate?.state === "planning" || liveUpdate?.state === "running") return liveUpdate.state;
   return liveUpdate?.state ?? goal.runState;
 }
 

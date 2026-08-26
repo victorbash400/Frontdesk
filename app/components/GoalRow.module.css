@@ -3,8 +3,8 @@
 .row > button:focus-visible { border-radius: 7px; outline: 2px solid #8b8b87; outline-offset: 3px; }
 .marker { position: relative; z-index: 1; display: grid; width: 17px; height: 17px; margin-top: 1px; place-items: center; border: 1px solid #b8b8b3; border-radius: 50%; color: #858581; background: #fafaf8; }
 .marker svg { width: 10px; height: 10px; stroke-width: 2.1; }
-.row[data-running="true"] .marker { border-color: transparent; }
-.row[data-running="true"] .marker svg { width: 17px; height: 17px; color: #686864; stroke-width: 1.5; animation: goal-spin 1.1s linear infinite; }
+.row[data-state="planning"] .marker, .row[data-state="running"] .marker, .row[data-state="queued"] .marker { border-color: transparent; }
+.row[data-state="planning"] .marker svg, .row[data-state="running"] .marker svg, .row[data-state="queued"] .marker svg { width: 17px; height: 17px; color: #686864; stroke-width: 1.5; animation: goal-spin 1.1s linear infinite; }
 .row[data-state="completed"] .marker { border-color: #31312f; background: #31312f; color: #fff; }
 .row[data-state="paused"] .marker { color: #858581; }
 .row[data-state="failed"] .marker { border-color: #a24c43; color: #a24c43; }
@@ -15,6 +15,7 @@
 .copy { min-width: 0; }
 .copy strong { display: block; }
 .copy strong { overflow: hidden; color: #292927; font-size: 13px; font-weight: 520; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.row[data-expanded="true"] .copy strong { overflow: visible; text-overflow: clip; white-space: normal; }
 .chevron { width: 15px; height: 15px; margin-top: 2px; color: #a2a29d; stroke-width: 1.7; transition: transform 240ms cubic-bezier(.2, .8, .2, 1); }
 .row[data-expanded="true"] .chevron { transform: rotate(180deg); }
 .reveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 260ms cubic-bezier(.2, .8, .2, 1), opacity 180ms ease; }
@@ -25,5 +26,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .chevron, .reveal { transition: none; }
-  .row[data-running="true"] .marker svg { animation: none; }
+  .row[data-state="planning"] .marker svg, .row[data-state="running"] .marker svg, .row[data-state="queued"] .marker svg { animation: none; }
 }

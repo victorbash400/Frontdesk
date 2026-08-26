@@ -1,0 +1,7 @@
+.status { display: flex; margin: 4px 13px 12px; align-items: center; gap: 9px; color: #555550; font-size: 12px; line-height: 1.45; }
+.status svg { width: 15px; height: 15px; flex: 0 0 auto; color: #686864; stroke-width: 1.6; animation: planning-spin 1.1s linear infinite; }
+.status span { position: relative; overflow: hidden; }
+.status span::after { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 15%, rgb(255 255 255 / 78%) 48%, transparent 75%); content: ""; transform: translateX(-110%); animation: planning-shimmer 1.45s ease-in-out infinite; }
+@keyframes planning-spin { to { transform: rotate(360deg); } }
+@keyframes planning-shimmer { to { transform: translateX(110%); } }
+@media (prefers-reduced-motion: reduce) { .status svg, .status span::after { animation: none; } }

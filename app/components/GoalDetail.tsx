@@ -8,6 +8,8 @@ import type { GoalLiveUpdate, GoalStatus, OperatorGoal } from "../types/goal";
 import { GoalActivityList } from "./GoalActivityList";
 import { DeleteGoalDialog } from "./DeleteGoalDialog";
 import { GoalPluginIcons } from "./GoalPluginIcons";
+import { GoalPlanningStatus } from "./GoalPlanningStatus";
+import { GoalTaskBoard } from "./GoalTaskBoard";
 import styles from "./GoalDetail.module.css";
 
 type GoalDetailProps = { goal: OperatorGoal; liveUpdate?: GoalLiveUpdate; plugins: PluginDefinition[]; onDelete: () => Promise<void>; onStatusChange: (status: GoalStatus) => void };
@@ -15,8 +17,10 @@ type GoalDetailProps = { goal: OperatorGoal; liveUpdate?: GoalLiveUpdate; plugin
 export function GoalDetail({ goal, liveUpdate, plugins, onDelete, onStatusChange }: GoalDetailProps) {
   const [deleting, setDeleting] = useState(false);
   const runState = liveUpdate?.state ?? goal.runState;
-  const canPause = goal.status === "active" && (runState === "queued" || runState === "running");
+  const canPause = goal.status === "active" && (runState === "planning" || runState === "queued" || runState === "running");
   return <><article className={styles.detail}>
+    {runState === "planning" && goal.currentStep ? <GoalPlanningStatus currentStep={goal.currentStep} /> : null}
+    <GoalTaskBoard tasks={goal.assignments} />
     <GoalActivityList activities={goal.activities} assignments={goal.assignments} liveUpdate={liveUpdate} />
     <footer>
       <GoalPluginIcons pluginIds={goal.pluginIds} plugins={plugins} />

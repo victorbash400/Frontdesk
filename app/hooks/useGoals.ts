@@ -29,11 +29,24 @@ export function useGoals() {
     const frame = window.requestAnimationFrame(() => { void refresh(); });
     const events = new EventSource("/api/events/stream");
     events.onmessage = (message) => {
-      const event = JSON.parse(message.data) as { type?: string; goal_id?: string; state?: GoalLiveUpdate["state"]; summary?: string };
+      const event = JSON.parse(message.data) as { type?: string; goal_id?: string; task_id?: string; id?: string; state?: GoalLiveUpdate["state"]; summary?: string; name?: string; message?: string; service?: string; status?: "done" | "error" };
       if (event.type === "goals_changed") void refresh();
       if (event.type === "goal_run" && event.goal_id && event.state) {
-        setLiveUpdates((current) => ({ ...current, [event.goal_id as string]: { state: event.state as GoalLiveUpdate["state"], summary: event.summary } }));
-        if (event.state !== "running") void refresh();
+        setLiveUpdates((current) => {
+          const active = event.state === "planning" || event.state === "queued" || event.state === "running";
+          return { ...current, [event.goal_id as string]: { ...current[event.goal_id as string], state: event.state as GoalLiveUpdate["state"], summary: event.summary, tool: active ? current[event.goal_id as string]?.tool : undefined } };
+        });
+        void refresh();
+      }
+      if (event.type === "goal_tool" && event.goal_id && event.name && event.message && event.service) {
+        setLiveUpdates((current) => ({ ...current, [event.goal_id as string]: { ...current[event.goal_id as string], state: "running", tool: { id: event.id, taskId: event.task_id, message: event.message as string, name: event.name as string, service: event.service as string, status: "running" } } }));
+      }
+      if (event.type === "goal_tool_result" && event.goal_id && event.name && event.status) {
+        setLiveUpdates((current) => {
+          const update = current[event.goal_id as string];
+          if (!update?.tool || update.tool.name !== event.name) return current;
+          return { ...current, [event.goal_id as string]: { ...update, tool: { ...update.tool, status: event.status as "done" | "error" } } };
+        });
       }
     };
     return () => { window.cancelAnimationFrame(frame); events.close(); };
