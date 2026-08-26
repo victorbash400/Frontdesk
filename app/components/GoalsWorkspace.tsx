@@ -1,6 +1,6 @@
 "use client";
 
-import { ListFilter, Plus, UserRound } from "lucide-react";
+import { ListFilter, Plus, Trash2, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useGoals } from "../hooks/useGoals";
@@ -11,6 +11,7 @@ import { skillCatalog } from "../lib/skillCatalog";
 import type { FileSystemNode } from "../types/filesystem";
 import type { GoalStatus } from "../types/goal";
 import { CreateGoalDialog } from "./CreateGoalDialog";
+import { DeleteGoalsDialog } from "./DeleteGoalsDialog";
 import { GoalList } from "./GoalList";
 import styles from "./GoalsWorkspace.module.css";
 
@@ -38,6 +39,9 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
   const [selectedGoalId, setSelectedGoalId] = useState<string>();
   const [sort, setSort] = useState<SortMode>("newest");
   const [creating, setCreating] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [selectedGoalIds, setSelectedGoalIds] = useState<Set<string>>(new Set());
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const effectiveClientId = selectedClientId === "all" ? undefined : selectedClientId;
   const availablePlugins = useMemo(() => pluginDirectory.filter((plugin) => plugins.enabledIds.has(plugin.id)), [plugins.enabledIds]);
   const availableSkills = useMemo(() => {
@@ -58,6 +62,20 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
   }, [clients, effectiveClientId, goals, sort, status]);
   const panelTitle = status === "all" ? "All goals" : `${filters.find((filter) => filter.id === status)?.label ?? "Goals"} goals`;
 
+  function leaveSelectionMode() {
+    setSelecting(false);
+    setSelectedGoalIds(new Set());
+  }
+
+  function toggleGoalSelection(id: string) {
+    setSelectedGoalIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   if (!loaded || !plugins.loaded || !skills.loaded) return null;
 
   return (
@@ -72,12 +90,32 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
       </section>
       {workspaceError ? <p className={styles.error} role="alert">{workspaceError}</p> : null}
       <section className={styles.panel}>
-        <header><span>{panelTitle}</span><small>{visible.length}</small></header>
+        <header>
+          <span>{panelTitle}</span>
+          <span className={styles.panelActions}>
+            <small>{selecting ? `${selectedGoalIds.size} selected` : visible.length}</small>
+            {selecting ? <>
+              <button className={styles.cancelSelection} onClick={leaveSelectionMode} type="button">Cancel</button>
+              <button className={styles.deleteSelection} disabled={!selectedGoalIds.size} onClick={() => setConfirmingDelete(true)} type="button"><Trash2 aria-hidden="true" />Delete</button>
+            </> : <button disabled={!visible.length} onClick={() => { setSelectedGoalId(undefined); setSelecting(true); }} type="button">Select</button>}
+          </span>
+        </header>
         <section className={styles.sheet}>
-          <GoalList clients={clients} goals={visible} liveUpdates={liveUpdates} onDelete={async (id) => { await deleteGoal(id); setSelectedGoalId(undefined); }} onSelect={setSelectedGoalId} onStatusChange={setGoalStatus} plugins={availablePlugins} selectedId={selectedGoalId} />
+          <GoalList clients={clients} goals={visible} liveUpdates={liveUpdates} onDelete={async (id) => { await deleteGoal(id); setSelectedGoalId(undefined); }} onSelect={setSelectedGoalId} onStatusChange={setGoalStatus} onToggleSelection={toggleGoalSelection} plugins={availablePlugins} selectedId={selectedGoalId} selectedIds={selectedGoalIds} selecting={selecting} />
         </section>
       </section>
       <CreateGoalDialog clients={clients} onCancel={() => setCreating(false)} onSubmit={async (goalClientId, text, skillIds, pluginIds) => { const goal = await createGoal(goalClientId, text, skillIds, pluginIds); setSelectedGoalId(goal.id); setStatus("active"); setCreating(false); }} open={creating} plugins={availablePlugins} skills={availableSkills} />
+      <DeleteGoalsDialog count={selectedGoalIds.size} onCancel={() => setConfirmingDelete(false)} onConfirm={async () => {
+        const ids = [...selectedGoalIds];
+        const results = await Promise.allSettled(ids.map(deleteGoal));
+        const failedIds = ids.filter((_, index) => results[index].status === "rejected");
+        if (failedIds.length) {
+          setSelectedGoalIds(new Set(failedIds));
+          throw new Error(`Deleted ${ids.length - failedIds.length} of ${ids.length} goals. ${failedIds.length} could not be deleted.`);
+        }
+        setConfirmingDelete(false);
+        leaveSelectionMode();
+      }} open={confirmingDelete} />
     </section>
   );
 }

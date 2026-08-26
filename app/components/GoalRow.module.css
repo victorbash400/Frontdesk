@@ -8,6 +8,10 @@
 .row[data-state="completed"] .marker { border-color: #31312f; background: #31312f; color: #fff; }
 .row[data-state="paused"] .marker { color: #858581; }
 .row[data-state="failed"] .marker { border-color: #a24c43; color: #a24c43; }
+.row[data-selecting="true"] .marker { border-radius: 5px; background: #fff; }
+.row[data-selecting="true"][data-selected="true"] .marker { border-color: #31312f; color: #fff; background: #31312f; }
+.row[data-selecting="true"] > button { grid-template-columns: 20px minmax(0, 1fr); }
+.row[data-selecting="true"] > button:hover .copy strong { color: #000; }
 .copy { min-width: 0; }
 .copy strong { display: block; }
 .copy strong { overflow: hidden; color: #292927; font-size: 13px; font-weight: 520; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }

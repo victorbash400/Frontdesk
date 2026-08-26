@@ -10,17 +10,19 @@ type GoalRowProps = {
   goal: OperatorGoal;
   liveUpdate?: GoalLiveUpdate;
   onSelect: () => void;
+  selected: boolean;
+  selecting: boolean;
 };
 
-export function GoalRow({ detail, expanded, goal, liveUpdate, onSelect }: GoalRowProps) {
+export function GoalRow({ detail, expanded, goal, liveUpdate, onSelect, selected, selecting }: GoalRowProps) {
   return (
-    <article className={styles.row} data-expanded={expanded} data-running={rowState(goal, liveUpdate) === "running"} data-state={rowState(goal, liveUpdate)}>
-      <button aria-expanded={expanded} aria-label={`${goal.text}, ${statusLabel(goal.status)}`} onClick={onSelect} type="button">
-        <span className={styles.marker}>{marker(goal, liveUpdate)}</span>
+    <article className={styles.row} data-expanded={!selecting && expanded} data-running={!selecting && rowState(goal, liveUpdate) === "running"} data-selected={selected} data-selecting={selecting} data-state={rowState(goal, liveUpdate)}>
+      <button aria-expanded={selecting ? undefined : expanded} aria-label={selecting ? `${selected ? "Deselect" : "Select"} ${goal.text}` : `${goal.text}, ${statusLabel(goal.status)}`} aria-pressed={selecting ? selected : undefined} onClick={onSelect} type="button">
+        <span className={styles.marker}>{selecting ? selected ? <Check aria-hidden="true" /> : null : marker(goal, liveUpdate)}</span>
         <span className={styles.copy}><strong>{goal.text}</strong></span>
-        <ChevronDown aria-hidden="true" className={styles.chevron} />
+        {selecting ? null : <ChevronDown aria-hidden="true" className={styles.chevron} />}
       </button>
-      <section aria-hidden={!expanded} className={styles.reveal} inert={!expanded ? true : undefined}><span>{detail}</span></section>
+      <section aria-hidden={selecting || !expanded} className={styles.reveal} inert={selecting || !expanded ? true : undefined}><span>{detail}</span></section>
     </article>
   );
 }
