@@ -275,6 +275,7 @@ def assignment_snapshot(session: Session, assignment: GoalAssignment) -> dict[st
         "dependsOn": json.loads(assignment.depends_on),
         "requiredInputs": json.loads(assignment.required_inputs),
         "expectedOutputs": json.loads(assignment.expected_outputs),
+        "skillIds": json.loads(assignment.skill_ids),
         "previewTarget": json.loads(assignment.preview_target),
         "updates": [{"id": item.id, "phase": item.phase, "progress": item.progress, "message": item.message, "nextStep": item.next_step, "createdAt": item.created_at.isoformat()} for item in updates],
         "report": assignment.report,

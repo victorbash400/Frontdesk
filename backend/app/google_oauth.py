@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import secrets
 from dataclasses import dataclass
 from urllib.parse import urlencode, urlparse
@@ -36,7 +37,11 @@ SCOPES = (
     "https://www.googleapis.com/auth/meetings.space.created",
     "https://www.googleapis.com/auth/meetings.space.readonly",
 )
-WORKSPACE_REQUIRED_SCOPES = frozenset(scope for scope in SCOPES if scope.startswith("https://www.googleapis.com/auth/"))
+GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.modify"
+WORKSPACE_REQUIRED_SCOPES = frozenset(
+    scope for scope in SCOPES
+    if scope.startswith("https://www.googleapis.com/auth/") and scope != GMAIL_SCOPE
+)
 WORKSPACE_PERMISSIONS = (
     ("workspace.drive", "Google Drive", "Search, read, create, and organize Drive files"),
     ("workspace.docs", "Google Docs", "Read and update Google documents"),
@@ -72,6 +77,7 @@ def connection_status(session: Session, account_id: str) -> dict[str, object]:
         OAuthConnection.provider == "google_workspace",
     ))
     granted_scopes = set(connection.scopes.split()) if connection else set()
+    unavailable_permissions = set(json.loads(connection.unavailable_permissions or "[]")) if connection else set()
     missing_scopes = sorted(WORKSPACE_REQUIRED_SCOPES - granted_scopes) if connection else []
     permission_rows = {
         permission.permission_id: permission.enabled
@@ -84,12 +90,24 @@ def connection_status(session: Session, account_id: str) -> dict[str, object]:
         "missing_scopes": missing_scopes,
         "email": connection.email if connection else None,
         "name": connection.profile_name if connection else None,
-        "picture": "/api/plugins/google/avatar" if connection and connection.picture_url else None,
+        "picture": f"/api/plugins/google/avatar?revision={_picture_revision(connection)}" if connection and connection.picture_url else None,
         "permissions": [
-            {"id": permission_id, "name": name, "description": description, "enabled": permission_rows.get(permission_id, True)}
+            {
+                "id": permission_id,
+                "name": name,
+                "description": description,
+                "enabled": permission_id not in unavailable_permissions and permission_rows.get(permission_id, True),
+                "available": permission_id not in unavailable_permissions,
+                "unavailable_reason": "Not included with this Google Workspace edition" if permission_id in unavailable_permissions else None,
+            }
             for permission_id, name, description in WORKSPACE_PERMISSIONS
         ],
     }
+
+
+def _picture_revision(connection: OAuthConnection) -> str:
+    identity = f"{connection.email}\0{connection.picture_url}\0{connection.updated_at.isoformat()}"
+    return hashlib.sha256(identity.encode()).hexdigest()[:16]
 
 
 async def profile_photo(session: Session, account_id: str) -> tuple[bytes, str]:
@@ -164,7 +182,8 @@ async def finish_connection(session: Session, state: str, code: str) -> str:
         missing_scopes = WORKSPACE_REQUIRED_SCOPES - granted_scopes
         if missing_scopes:
             raise RuntimeError("Google Workspace did not grant every required permission. Reconnect and approve all requested access.")
-        await _validate_workspace_token(client, access_token)
+        unavailable_permissions = {"workspace.gmail"} if GMAIL_SCOPE not in granted_scopes else set()
+        unavailable_permissions.update(await _validate_workspace_token(client, access_token, check_gmail=GMAIL_SCOPE in granted_scopes))
     connection = session.scalar(select(OAuthConnection).where(
         OAuthConnection.account_id == pending.account_id,
         OAuthConnection.provider == "google_workspace",
@@ -175,6 +194,7 @@ async def finish_connection(session: Session, state: str, code: str) -> str:
         connection.picture_url = picture
         connection.refresh_token = encrypt_secret(refresh_token)
         connection.scopes = str(tokens.get("scope") or "")
+        connection.unavailable_permissions = json.dumps(sorted(unavailable_permissions))
     else:
         session.add(OAuthConnection(
             account_id=pending.account_id,
@@ -184,7 +204,17 @@ async def finish_connection(session: Session, state: str, code: str) -> str:
             picture_url=picture,
             refresh_token=encrypt_secret(refresh_token),
             scopes=str(tokens.get("scope") or ""),
+            unavailable_permissions=json.dumps(sorted(unavailable_permissions)),
         ))
+    for permission_id in unavailable_permissions:
+        permission = session.scalar(select(PluginPermission).where(
+            PluginPermission.account_id == pending.account_id,
+            PluginPermission.permission_id == permission_id,
+        ))
+        if permission:
+            permission.enabled = False
+        else:
+            session.add(PluginPermission(account_id=pending.account_id, permission_id=permission_id, enabled=False))
     session.commit()
     return email
 
@@ -193,6 +223,13 @@ def set_workspace_permission(session: Session, account_id: str, permission_id: s
     valid_ids = {item[0] for item in WORKSPACE_PERMISSIONS}
     if permission_id not in valid_ids:
         raise ValueError("Unknown Google Workspace permission.")
+    connection = session.scalar(select(OAuthConnection).where(
+        OAuthConnection.account_id == account_id,
+        OAuthConnection.provider == "google_workspace",
+    ))
+    unavailable_permissions = set(json.loads(connection.unavailable_permissions or "[]")) if connection else set()
+    if enabled and permission_id in unavailable_permissions:
+        raise ValueError("This service is not included with the connected Google Workspace edition.")
     permission = session.scalar(select(PluginPermission).where(
         PluginPermission.account_id == account_id,
         PluginPermission.permission_id == permission_id,
@@ -204,13 +241,17 @@ def set_workspace_permission(session: Session, account_id: str, permission_id: s
     session.commit()
 
 
-async def _validate_workspace_token(client: httpx.AsyncClient, access_token: str) -> None:
+async def _validate_workspace_token(client: httpx.AsyncClient, access_token: str, *, check_gmail: bool = True) -> set[str]:
     headers = {"Authorization": f"Bearer {access_token}"}
     checks = (
-        ("Gmail", "https://gmail.googleapis.com/gmail/v1/users/me/profile"),
-        ("Google Drive", "https://www.googleapis.com/drive/v3/files?pageSize=1&fields=files(id)"),
+        ("workspace.gmail", "Gmail", "https://gmail.googleapis.com/gmail/v1/users/me/profile", False),
+        ("workspace.drive", "Google Drive", "https://www.googleapis.com/drive/v3/files?pageSize=1&fields=files(id)", True),
     )
-    for product, url in checks:
+    unavailable_permissions: set[str] = set()
+    for permission_id, product, url, required in checks:
+        if permission_id == "workspace.gmail" and not check_gmail:
+            unavailable_permissions.add(permission_id)
+            continue
         response = await client.get(url, headers=headers)
         if response.is_success:
             continue
@@ -218,9 +259,11 @@ async def _validate_workspace_token(client: httpx.AsyncClient, access_token: str
             detail = response.json().get("error", {}).get("message")
         except ValueError:
             detail = response.text[:300]
-        raise RuntimeError(
-            f"{product} authorization failed: {detail or response.reason_phrase}. Reconnect and approve the requested access."
-        )
+        if not required and "service not enabled" in str(detail or "").casefold():
+            unavailable_permissions.add(permission_id)
+            continue
+        raise RuntimeError(f"{product} authorization failed: {detail or response.reason_phrase}. Reconnect and approve the requested access.")
+    return unavailable_permissions
 
 
 def disconnect(session: Session, account_id: str) -> None:

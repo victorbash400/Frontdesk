@@ -83,6 +83,22 @@ class NotificationAnswer(BaseModel):
     answer: str = Field(min_length=1, max_length=20_000)
 
 
+class SkillCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=2_000)
+    instructions: str = Field(default="", max_length=40_000)
+    batch_name: str = Field(default="Created by you", min_length=1, max_length=128)
+    required_plugin_ids: list[str] = Field(default_factory=list, max_length=50)
+
+
+class SkillUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=2_000)
+    instructions: str = Field(default="", max_length=40_000)
+    batch_name: str = Field(default="Created by you", min_length=1, max_length=128)
+    required_plugin_ids: list[str] = Field(default_factory=list, max_length=50)
+
+
 class PermissionUpdate(BaseModel):
     enabled: bool
 

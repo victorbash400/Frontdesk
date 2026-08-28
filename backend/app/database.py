@@ -34,6 +34,8 @@ def initialize_database() -> None:
                 connection.execute(text("ALTER TABLE oauth_connections ADD COLUMN profile_name VARCHAR(255)"))
             if "picture_url" not in oauth_columns:
                 connection.execute(text("ALTER TABLE oauth_connections ADD COLUMN picture_url TEXT"))
+            if "unavailable_permissions" not in oauth_columns:
+                connection.execute(text("ALTER TABLE oauth_connections ADD COLUMN unavailable_permissions TEXT NOT NULL DEFAULT '[]'"))
     if "meetings" in inspector.get_table_names():
         meeting_columns = {column["name"] for column in inspector.get_columns("meetings")}
         if "event_subscription_operation" not in meeting_columns:
@@ -65,6 +67,7 @@ def initialize_database() -> None:
             "required_inputs": "TEXT NOT NULL DEFAULT '[]'",
             "expected_outputs": "TEXT NOT NULL DEFAULT '[]'",
             "preview_target": "TEXT NOT NULL DEFAULT 'null'",
+            "skill_ids": "TEXT NOT NULL DEFAULT '[]'",
         }
         with engine.begin() as connection:
             for column, definition in additions.items():

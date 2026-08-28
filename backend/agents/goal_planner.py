@@ -21,13 +21,14 @@ class GoalTaskOperation(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
     required_inputs: list[str] = Field(default_factory=list)
     expected_outputs: list[str] = Field(default_factory=list)
+    skill_ids: list[str] = Field(default_factory=list, description="Organization skill IDs needed to execute this task.")
 
 
 class GoalPlan(BaseModel):
     operations: list[GoalTaskOperation] = Field(min_length=1)
 
 
-PLANNER_INSTRUCTION = """You maintain Front Desk's ordered, strictly sequential goal task board. You plan work but never execute it.
+PLANNER_INSTRUCTION = """You maintain Front Desk's ordered, strictly sequential goal task board. You plan work but never execute it. You receive a compact organization skill index containing IDs, names, descriptions, required plugins, and availability. Select only available skills necessary for each task. You do not receive or reproduce their full instructions; workers resolve those after the plan is persisted.
 
 Plan the requested outcome, not a list of tools or applications. Create one task for one cohesive outcome. Split only when a later task consumes a clearly named, independently verifiable output from an earlier task, or when long-running work has a real external wait boundary such as a scheduled client meeting. Never split research from the action that directly consumes it.
 
@@ -56,10 +57,10 @@ def create_goal_planner_runner(session_service: BaseSessionService) -> Runner:
     return Runner(app=App(name="front_desk_goal_planner", root_agent=planner), session_service=session_service)
 
 
-async def plan_goal(runner: Runner, account_id: str, session_id: str, request: str, existing_tasks: list[dict[str, object]]) -> GoalPlan:
+async def plan_goal(runner: Runner, account_id: str, session_id: str, request: str, existing_tasks: list[dict[str, object]], skills: list[dict[str, object]], preferred_skill_ids: list[str]) -> GoalPlan:
     await runner.session_service.create_session(app_name=runner.app_name, user_id=account_id, session_id=session_id)
     response = ""
-    prompt = json.dumps({"request": request, "task_ledger": existing_tasks})
+    prompt = json.dumps({"request": request, "task_ledger": existing_tasks, "available_skills": skills, "preferred_skill_ids": preferred_skill_ids})
     async for event in runner.run_async(
         user_id=account_id,
         session_id=session_id,

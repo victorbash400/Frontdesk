@@ -20,9 +20,12 @@ from app.database import SessionLocal
 from app.event_stream import AccountEventBroker
 from app.goal_tasks import GoalTaskManager
 from app.goals import create_notification
-from app.models import GitHubRepositoryAccess, Goal, GoalAssignment, GoalAutomation, GoalBrowserPreview, PluginInstallation
+from app.models import GitHubRepositoryAccess, Goal, GoalAssignment, GoalAutomation, GoalBrowserPreview, OAuthConnection, PluginInstallation
+from app.google_oauth import connection_status
+from app.skills import list_skills
 from agents.goal_planner import GoalPlan, GoalTaskOperation
 from agents.goals_chat_agent import create_goals_chat_app
+from app import google_oauth
 from app.voice import VOICE_MODEL, VOICE_TOOLS, verify_voice_ticket
 from tools import workspace
 from tools.browser_use import playwright as playwright_browser
@@ -163,6 +166,110 @@ def test_workspace_permissions_are_account_scoped() -> None:
         second = client.get("/api/plugins/google", headers=second_headers)
         second_permissions = {permission["id"]: permission["enabled"] for permission in second.json()["permissions"]}
         assert second_permissions["workspace.gmail"] is True
+
+
+def test_workspace_avatar_url_is_versioned_by_connected_identity() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "avatar-revision@example.com", "Avatar Revision")
+        with SessionLocal() as session:
+            connection = OAuthConnection(
+                account_id=account["id"],
+                provider="google_workspace",
+                email="first@example.com",
+                profile_name="First",
+                picture_url="https://lh3.googleusercontent.com/a/first",
+                refresh_token="encrypted",
+                scopes=" ".join(google_oauth.SCOPES),
+            )
+            session.add(connection)
+            session.commit()
+            first_picture = connection_status(session, account["id"])["picture"]
+            connection.email = "second@example.com"
+            connection.picture_url = "https://lh3.googleusercontent.com/a/second"
+            session.commit()
+            second_picture = connection_status(session, account["id"])["picture"]
+
+    assert str(first_picture).startswith("/api/plugins/google/avatar?revision=")
+    assert first_picture != second_picture
+
+
+def test_organization_skill_library_is_persisted_and_custom_skills_are_deletable() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "skills-library@example.com", "Skills Library")
+        headers = account_headers(account["id"])
+        seeded = client.get("/api/skills", headers=headers)
+        assert seeded.status_code == 200
+        builtins = seeded.json()
+        aqualabs = next(skill for skill in builtins if skill["name"] == "AquaLabs Customer Resolution")
+        assert aqualabs["batchName"] == "AquaLabs"
+        assert aqualabs["deletable"] is False
+        assert client.delete(f"/api/skills/{aqualabs['id']}", headers=headers).status_code == 409
+
+        created = client.post("/api/skills", headers=headers, json={
+            "name": "VIP Escalation",
+            "description": "Escalate high-priority customer cases.",
+            "instructions": "Collect evidence and notify the account owner.",
+            "batch_name": "Created by you",
+            "required_plugin_ids": ["slack"],
+        })
+        assert created.status_code == 201
+        skill = created.json()
+        assert skill["deletable"] is True
+        updated = client.put(f"/api/skills/{skill['id']}", headers=headers, json={
+            "name": "VIP Customer Escalation",
+            "description": skill["description"],
+            "instructions": skill["instructions"],
+            "batch_name": "AquaLabs",
+            "required_plugin_ids": ["slack"],
+        })
+        assert updated.status_code == 200
+        assert updated.json()["batchName"] == "AquaLabs"
+        assert updated.json()["version"] == 2
+        assert client.delete(f"/api/skills/{skill['id']}", headers=headers).status_code == 200
+        assert all(item["id"] != skill["id"] for item in client.get("/api/skills", headers=headers).json())
+
+
+def test_workspace_oauth_accepts_essentials_without_gmail() -> None:
+    class Response:
+        def __init__(self, success: bool, message: str = "") -> None:
+            self.is_success = success
+            self.reason_phrase = "Forbidden"
+            self._message = message
+
+        def json(self) -> dict[str, object]:
+            return {"error": {"message": self._message}}
+
+    class Client:
+        async def get(self, url: str, **_: object) -> Response:
+            if "gmail.googleapis.com" in url:
+                return Response(False, "Mail service not enabled")
+            return Response(True)
+
+    unavailable = asyncio.run(google_oauth._validate_workspace_token(Client(), "token"))
+    assert unavailable == {"workspace.gmail"}
+
+
+def test_workspace_oauth_still_rejects_required_service_failure() -> None:
+    class Response:
+        def __init__(self, success: bool, message: str = "") -> None:
+            self.is_success = success
+            self.reason_phrase = "Forbidden"
+            self._message = message
+
+        def json(self) -> dict[str, object]:
+            return {"error": {"message": self._message}}
+
+    class Client:
+        async def get(self, url: str, **_: object) -> Response:
+            if "gmail.googleapis.com" in url:
+                return Response(False, "Mail service not enabled")
+            return Response(False, "Drive API disabled")
+
+    try:
+        asyncio.run(google_oauth._validate_workspace_token(Client(), "token"))
+        raise AssertionError("A required Workspace service failure must reject the connection.")
+    except RuntimeError as error:
+        assert "Google Drive authorization failed" in str(error)
 
 
 def test_external_plugin_permissions_are_account_scoped() -> None:
@@ -500,8 +607,10 @@ def test_planner_creates_ordered_persistent_tasks_and_updates_queued_work() -> N
 
     manager = GoalTaskManager()
     goal = manager._goal(account["id"], goal_payload["id"])
+    with SessionLocal() as session:
+        client_brief_id = next(skill["id"] for skill in list_skills(session, account["id"]) if skill["name"] == "Client Brief")
     created_plan = GoalPlan(operations=[
-        GoalTaskOperation(action="create", key="prepare", title="Prepare outcome", instruction="Prepare the verified client outcome.", expected_outputs=["Verified outcome"]),
+        GoalTaskOperation(action="create", key="prepare", title="Prepare outcome", instruction="Prepare the verified client outcome.", expected_outputs=["Verified outcome"], skill_ids=[client_brief_id]),
         GoalTaskOperation(action="create", key="send", title="Send outcome", instruction="Send the verified outcome to the client.", depends_on=["prepare"], required_inputs=["Verified outcome"], expected_outputs=["Sent message ID"]),
     ])
     async def inspect_planning_state(*_: object) -> GoalPlan:
@@ -516,6 +625,8 @@ def test_planner_creates_ordered_persistent_tasks_and_updates_queued_work() -> N
     with SessionLocal() as session:
         tasks = [session.get(GoalAssignment, task_id) for task_id in task_ids]
         assert [task.title for task in tasks if task] == ["Prepare outcome", "Send outcome"]
+        assert json.loads(tasks[0].skill_ids) == [client_brief_id]
+        assert [skill.name for skill in manager._assignment_skills(account["id"], tasks[0])] == ["Client Brief"]
         assert json.loads(tasks[1].depends_on) == [tasks[0].id]
         persisted_goal = session.get(Goal, goal.id)
         assert persisted_goal and persisted_goal.run_state == "queued"

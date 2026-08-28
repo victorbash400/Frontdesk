@@ -25,7 +25,8 @@ from .mcp_oauth import connection_support, disconnect as disconnect_mcp, finish_
 from .models import Goal, GoalAssignment, GoalBrowserPreview
 from .plugin_service import install_plugin, plugin_snapshot, set_plugin_permission, uninstall_plugin
 from .repository import create_node, list_nodes, search_nodes, set_trashed, sync_nodes, update_node
-from .schemas import AccountCreate, AccountCredentials, AccountRead, AutomationCreate, ChatRequest, FileSystemSync, GitHubRepositoryUpdate, GoalCreate, GoalsChatRequest, GoalUpdate, HealthRead, NodeCreate, NodeRead, NodeUpdate, NotificationAnswer, PermissionUpdate, VoiceTicketRequest
+from .schemas import AccountCreate, AccountCredentials, AccountRead, AutomationCreate, ChatRequest, FileSystemSync, GitHubRepositoryUpdate, GoalCreate, GoalsChatRequest, GoalUpdate, HealthRead, NodeCreate, NodeRead, NodeUpdate, NotificationAnswer, PermissionUpdate, SkillCreate, SkillUpdate, VoiceTicketRequest
+from .skills import create_skill, delete_skill, list_skills, update_skill
 from .voice import create_voice_ticket, run_voice_session
 from meetings.routes import router as meetings_router
 
@@ -151,6 +152,36 @@ async def post_goal(body: GoalCreate, account_id: str = Depends(require_account_
     return goal
 
 
+@app.get("/api/skills")
+def get_skills(account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> list[dict[str, object]]:
+    return list_skills(session, account_id)
+
+
+@app.post("/api/skills", status_code=201)
+def post_skill(body: SkillCreate, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    try:
+        return create_skill(session, account_id, **body.model_dump())
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+
+
+@app.put("/api/skills/{skill_id}")
+def put_skill(skill_id: str, body: SkillUpdate, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    try:
+        return update_skill(session, account_id, skill_id, **body.model_dump())
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+
+
+@app.delete("/api/skills/{skill_id}")
+def remove_skill(skill_id: str, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, bool]:
+    try:
+        delete_skill(session, account_id, skill_id)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+    return {"deleted": True}
+
+
 @app.patch("/api/goals/{goal_id}")
 async def patch_goal(goal_id: str, body: GoalUpdate, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
     if body.status in {"paused", "completed"}:
@@ -218,7 +249,7 @@ async def get_google_avatar(account_id: str = Depends(require_account_id), sessi
         raise HTTPException(404, str(error)) from error
     except httpx.HTTPError as error:
         raise HTTPException(502, "Google profile photo could not be loaded.") from error
-    return Response(content=content, media_type=content_type, headers={"Cache-Control": "private, max-age=3600"})
+    return Response(content=content, media_type=content_type, headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
 
 @app.post("/api/plugins/google/start")

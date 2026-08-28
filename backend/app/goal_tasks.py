@@ -19,7 +19,8 @@ from app.database import SessionLocal
 from app.event_stream import account_events
 from app.goal_tool_ui import describe_goal_tool, goal_requires_browser
 from app.goals import create_notification, require_goal
-from app.models import Goal, GoalActivity, GoalAssignment, GoalBrowserPreview, GoalTaskUpdate, OAuthConnection, PluginInstallation
+from app.models import Goal, GoalActivity, GoalAssignment, GoalBrowserPreview, GoalTaskUpdate, OAuthConnection, PluginInstallation, Skill
+from app.skills import list_skills
 from agents.goal_planner import create_goal_planner_runner, plan_goal
 from tools.browser_use import capture_browser_preview, connected_playwright_toolset
 from tools.external_plugins import connected_external_plugin_toolset
@@ -177,7 +178,8 @@ class GoalTaskManager:
             self._set_assignment(assignment_id, status="running", phase="working", started_at=datetime.now(timezone.utc), current_step=instruction)
             self._set_goal_state(goal_id, "running", instruction)
             self._publish(account_id, goal_id, "running")
-            runner = self._runner(tools)
+            selected_skills = self._assignment_skills(account_id, assignment)
+            runner = self._runner(tools, selected_skills)
             session_id = hashlib.sha256(f"{account_id}:goal-worker:{goal_id}:{assignment_id}".encode()).hexdigest()
             existing = await sessions.get_session(app_name=runner.app_name, user_id=account_id, session_id=session_id)
             if not existing:
@@ -276,19 +278,41 @@ class GoalTaskManager:
         self._set_goal_state(goal.id, "planning", f"Defining tasks for: {planning_request}")
         self._publish(account_id, goal.id, "planning", f"Defining tasks for: {planning_request}")
         planner_session_id = hashlib.sha256(f"{account_id}:goal-planner:{goal.id}:{datetime.now(timezone.utc).isoformat()}".encode()).hexdigest()
-        plan = await plan_goal(planner, account_id, planner_session_id, planning_request, ledger)
+        with SessionLocal() as session:
+            skill_catalog = list_skills(session, account_id)
+            installed_for_plan = set(session.scalars(select(PluginInstallation.plugin_id).where(PluginInstallation.account_id == account_id)))
+        skill_index = [{"id": item["id"], "name": item["name"], "description": item["description"], "required_plugin_ids": item["requiredPluginIds"], "available": set(item["requiredPluginIds"]).issubset(installed_for_plan)} for item in skill_catalog]
+        available_skill_ids = {str(item["id"]) for item in skill_catalog}
+        plan = await plan_goal(planner, account_id, planner_session_id, planning_request, ledger, skill_index, json.loads(goal.skill_ids))
         keys: dict[str, str] = {}
         existing_by_id = {item.id: item for item in existing}
         assignment_ids: list[str] = []
         with SessionLocal() as session:
+            skill_rows = session.scalars(select(Skill).where(Skill.account_id == account_id)).all()
+            skills_by_id = {skill.id: skill for skill in skill_rows}
+            installed_plugins = set(session.scalars(select(PluginInstallation.plugin_id).where(PluginInstallation.account_id == account_id)))
+            persisted_goal = require_goal(session, account_id, goal.id)
+            selected_plugins = set(json.loads(persisted_goal.plugin_ids))
             for operation in plan.operations:
+                unknown_skills = [skill_id for skill_id in operation.skill_ids if skill_id not in available_skill_ids]
+                if unknown_skills:
+                    raise RuntimeError(f"The goal planner selected unknown organization skills: {', '.join(unknown_skills)}")
+                required_plugins = {
+                    plugin_id
+                    for skill_id in operation.skill_ids
+                    for plugin_id in json.loads(skills_by_id[skill_id].required_plugin_ids)
+                }
+                missing_plugins = sorted(required_plugins - installed_plugins)
+                if missing_plugins:
+                    raise RuntimeError(f"Selected skills require plugins that are not installed: {', '.join(missing_plugins)}")
+                selected_plugins.update(required_plugins)
                 if operation.action == "create":
                     if not operation.key or operation.key in keys or not operation.title or not operation.instruction:
                         raise RuntimeError("The goal planner returned an incomplete or duplicate create operation.")
                     unknown = [key for key in operation.depends_on if key not in keys]
                     if unknown:
                         raise RuntimeError(f"The goal planner referenced tasks that do not precede this task: {', '.join(unknown)}")
-                    assignment = GoalAssignment(goal_id=goal.id, title=operation.title, instruction=operation.instruction, status="queued", phase="queued", current_step=operation.title, depends_on=json.dumps([keys[key] for key in operation.depends_on]), required_inputs=json.dumps(operation.required_inputs), expected_outputs=json.dumps(operation.expected_outputs))
+                    assignment = GoalAssignment(goal_id=goal.id, title=operation.title, instruction=operation.instruction, status="queued", phase="queued", current_step=operation.title, depends_on=json.dumps([keys[key] for key in operation.depends_on]), required_inputs=json.dumps(operation.required_inputs), expected_outputs=json.dumps(operation.expected_outputs), skill_ids=json.dumps(operation.skill_ids))
                     session.add(assignment)
                     session.flush()
                     keys[operation.key] = assignment.id
@@ -312,6 +336,7 @@ class GoalTaskManager:
                     persisted.title = operation.title or persisted.title
                     persisted.instruction = operation.instruction
                     persisted.current_step = persisted.title
+                    persisted.skill_ids = json.dumps(operation.skill_ids)
                     assignment_ids.append(persisted.id)
                 elif operation.action == "steer":
                     if persisted.status not in {"running", "blocked"} or not operation.instruction:
@@ -322,6 +347,7 @@ class GoalTaskManager:
                     persisted.finished_at = None
                     persisted.report = ""
                     persisted.evidence = "[]"
+                    persisted.skill_ids = json.dumps(operation.skill_ids)
                     assignment_ids.append(persisted.id)
                 elif operation.action == "cancel":
                     if persisted.status not in {"queued", "running", "blocked"}:
@@ -329,6 +355,7 @@ class GoalTaskManager:
                     persisted.status = "cancelled"
                     persisted.phase = "cancelled"
                     persisted.finished_at = datetime.now(timezone.utc)
+            persisted_goal.plugin_ids = json.dumps(sorted(selected_plugins))
             session.commit()
             remaining = list(session.scalars(select(GoalAssignment.id).where(GoalAssignment.goal_id == goal.id, GoalAssignment.status == "queued").order_by(GoalAssignment.created_at)))
         assignment_ids.extend(item_id for item_id in remaining if item_id not in assignment_ids)
@@ -373,11 +400,27 @@ class GoalTaskManager:
                 tools.append(external)
         return tools, toolsets
 
-    def _runner(self, tools: list[Any]) -> Runner:
+    def _runner(self, tools: list[Any], skills: list[Skill]) -> Runner:
         settings = get_settings()
         model = Gemini(model=settings.gemini_model, client_kwargs={"vertexai": True, "project": settings.google_cloud_project, "location": settings.google_cloud_location}, retry_options=types.HttpRetryOptions(attempts=1))
-        agent = Agent(name="front_desk_goal_worker", description="Completes one persistent Front Desk goal.", model=model, instruction=WORKER_INSTRUCTION, tools=tools, before_tool_callback=begin_single_tool, after_tool_callback=finish_single_tool, on_tool_error_callback=stop_on_tool_error, generate_content_config=types.GenerateContentConfig(thinking_config=types.ThinkingConfig(include_thoughts=True, thinking_level=types.ThinkingLevel.MEDIUM)))
+        skill_instructions = "\n\n".join(f"Skill: {skill.name} (version {skill.version})\n{skill.instructions}" for skill in skills)
+        instruction = WORKER_INSTRUCTION + (f"\n\nSelected organization skills for this task:\n{skill_instructions}" if skill_instructions else "")
+        agent = Agent(name="front_desk_goal_worker", description="Completes one persistent Front Desk goal.", model=model, instruction=instruction, tools=tools, before_tool_callback=begin_single_tool, after_tool_callback=finish_single_tool, on_tool_error_callback=stop_on_tool_error, generate_content_config=types.GenerateContentConfig(thinking_config=types.ThinkingConfig(include_thoughts=True, thinking_level=types.ThinkingLevel.MEDIUM)))
         return Runner(app=App(name="front_desk_goal_worker", root_agent=agent), session_service=sessions)
+
+    def _assignment_skills(self, account_id: str, assignment: GoalAssignment) -> list[Skill]:
+        skill_ids = json.loads(assignment.skill_ids)
+        if not skill_ids:
+            return []
+        with SessionLocal() as session:
+            skills = list(session.scalars(select(Skill).where(Skill.account_id == account_id, Skill.id.in_(skill_ids))))
+            by_id = {skill.id: skill for skill in skills}
+            missing = [skill_id for skill_id in skill_ids if skill_id not in by_id]
+            if missing:
+                raise RuntimeError(f"Assigned organization skills are unavailable: {', '.join(missing)}")
+            for skill in skills:
+                session.expunge(skill)
+        return [by_id[skill_id] for skill_id in skill_ids]
 
     def _goal(self, account_id: str, goal_id: str) -> Goal:
         with SessionLocal() as session:

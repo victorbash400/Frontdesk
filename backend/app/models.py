@@ -112,6 +112,7 @@ class OAuthConnection(Base):
     picture_url: Mapped[str | None] = mapped_column(Text)
     refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
     scopes: Mapped[str] = mapped_column(Text, nullable=False)
+    unavailable_permissions: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
@@ -170,6 +171,27 @@ class PluginPermission(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
+class Skill(Base):
+    __tablename__ = "skills"
+    __table_args__ = (UniqueConstraint("account_id", "slug"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    slug: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(24), nullable=False, default="organization")
+    batch_name: Mapped[str] = mapped_column(String(128), nullable=False, default="Organization")
+    plugin_id: Mapped[str | None] = mapped_column(String(48), index=True)
+    required_plugin_ids: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    source_url: Mapped[str | None] = mapped_column(Text)
+    deletable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
 class Goal(Base):
     __tablename__ = "goals"
 
@@ -216,6 +238,7 @@ class GoalAssignment(Base):
     depends_on: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     required_inputs: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     expected_outputs: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    skill_ids: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     preview_target: Mapped[str] = mapped_column(Text, default="null", nullable=False)
     report: Mapped[str] = mapped_column(Text, default="", nullable=False)
     evidence: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
