@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Front Desk Browser Use",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Connect Chrome to Front Desk through Playwright for complete browser automation.",
   "permissions": [
     "debugger",
@@ -9,7 +9,9 @@
     "tabs",
     "tabGroups",
     "scripting",
-    "downloads"
+    "downloads",
+    "storage",
+    "offscreen"
   ],
   "host_permissions": [
     "<all_urls>"

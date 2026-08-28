@@ -15,6 +15,7 @@ describe('Meet relay identity', () => {
 
   it('replaces the old tab only for a new runtime', () => {
     expect(relayDecision(current, { ...current, runtimeId: 'runtime-2', bridgeId: 'bridge-2', tabId: 11 })).toBe('replace-runtime');
+    expect(relayDecision(current, { ...current, meetingId: 'meeting-2', runtimeId: 'runtime-2', bridgeId: 'bridge-2', tabId: 11 })).toBe('replace-runtime');
   });
 
   it('rejects incomplete identities', () => {

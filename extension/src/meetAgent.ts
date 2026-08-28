@@ -1,3 +1,7 @@
+import { pcmPacket, resampleMono } from './audioPcm';
+import { AGENT_EARS_NAME, isAudioDeviceLabel } from './agentAudioDevices';
+import { AGENT_MICROPHONE_NAME, isAgentMicrophoneLabel } from './agentMicrophone';
+
 type MeetWorkerConfig = {
   meetingId: string;
   runtimeId: string;
@@ -53,15 +57,21 @@ function paddedBase64(value: string): string {
 async function start(config: MeetWorkerConfig): Promise<void> {
   console.log('[Front Desk Meet] Starting worker', config.meetingId);
   const audio = new MeetAudioBridge();
-  audio.installMicrophone();
-  const socket = new WorkerSocket();
+  const socket = new WorkerSocket(config);
   audio.connect(socket);
-  installPeerCapture(audio);
+  await audio.installDevices();
+  installPeerVideoCapture(audio);
   const controls = new MeetControls(socket, audio);
   socket.addEventListener('open', () => {
     console.log('[Front Desk Meet] Media socket connected');
+    socket.diagnostic('worker.started', {
+      audioCapture: AGENT_EARS_NAME,
+      playbackRate: PLAYBACK_RATE,
+      microphone: AGENT_MICROPHONE_NAME,
+    });
     socket.send(JSON.stringify({ type: 'browser_ready' }));
   });
+  socket.addEventListener('close', () => console.warn('[Front Desk Meet] Media socket closed'));
   socket.addEventListener('message', rawEvent => {
     const event = rawEvent as MessageEvent;
     if (event.data instanceof ArrayBuffer) {
@@ -81,7 +91,7 @@ class WorkerSocket extends EventTarget {
   readyState: number = WebSocket.CONNECTING;
   private readonly relay = ensureRelayElement();
 
-  constructor() {
+  constructor(private readonly config: MeetWorkerConfig) {
     super();
     const receive = () => {
       const raw = this.relay.getAttribute('data-incoming');
@@ -92,6 +102,7 @@ class WorkerSocket extends EventTarget {
         this.readyState = WebSocket.OPEN;
         this.dispatchEvent(new Event('open'));
       } else if (message.kind === 'close' || message.kind === 'rejected') {
+        console.error('[Front Desk Meet] Relay stopped', message);
         this.readyState = WebSocket.CLOSED;
         this.dispatchEvent(new CloseEvent('close'));
       } else {
@@ -110,7 +121,20 @@ class WorkerSocket extends EventTarget {
   }
 
   close(code = 1000, reason = ''): void {
+    this.diagnostic('worker.closing', { code, reason });
     this.write({ kind: 'close', code, reason });
+  }
+
+  diagnostic(stage: string, details: Record<string, string | number | boolean> = {}): void {
+    const correlated = {
+      meetingId: this.config.meetingId,
+      runtimeId: this.config.runtimeId,
+      bridgeId: this.config.bridgeId,
+      ...details,
+    };
+    console.log('[Front Desk Meet]', stage, correlated);
+    if (this.readyState === WebSocket.OPEN)
+      this.send(JSON.stringify({ type: 'diagnostic', stage, details: correlated }));
   }
 
   private write(message: object): void {
@@ -142,68 +166,101 @@ function base64ToBytes(value: string): Uint8Array {
 
 class MeetAudioBridge {
   private readonly context = new AudioContext({ sampleRate: PLAYBACK_RATE });
-  private readonly microphone = this.context.createMediaStreamDestination();
   private socket?: WorkerSocket;
-  private readonly captureContexts = new Set<AudioContext>();
+  private microphoneDeviceId?: string;
+  private captureSource?: MediaStreamAudioSourceNode;
+  private captureProcessor?: ScriptProcessorNode;
+  private captureSink?: GainNode;
+  private capturePacketCount = 0;
+  private capturePeak = 0;
+  private playbackPacketCount = 0;
   private playbackTime = 0;
 
   connect(socket: WorkerSocket): void {
     this.socket = socket;
   }
 
-  outgoingTrack(): MediaStreamTrack {
-    return this.microphone.stream.getAudioTracks()[0];
-  }
+  async installDevices(): Promise<void> {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const microphone = devices.find(device => device.kind === 'audioinput' && isAgentMicrophoneLabel(device.label));
+    const writer = devices.find(device => device.kind === 'audiooutput' && isAgentMicrophoneLabel(device.label));
+    const ears = devices.find(device => device.kind === 'audioinput' && isAudioDeviceLabel(device.label, AGENT_EARS_NAME));
+    if (!microphone || !writer || !ears)
+      throw new Error('Agent Mike and Agent Ears must both be installed.');
+    const sinkContext = this.context as AudioContext & { setSinkId?: (sinkId: string) => Promise<void> };
+    if (!sinkContext.setSinkId)
+      throw new Error('This Chrome version cannot route Front Desk audio to Agent Mike.');
+    await sinkContext.setSinkId(writer.deviceId);
+    this.microphoneDeviceId = microphone.deviceId;
+    this.socket?.diagnostic('microphone.device_bound', {
+      name: AGENT_MICROPHONE_NAME,
+      inputDeviceId: microphone.deviceId,
+      outputDeviceId: writer.deviceId,
+    });
 
-  isOutgoingTrack(track: MediaStreamTrack): boolean {
-    return track === this.outgoingTrack();
-  }
+    const earsStream = await navigator.mediaDevices.getUserMedia({
+      audio: { deviceId: { exact: ears.deviceId } },
+      video: false,
+    });
+    this.captureInput(earsStream);
+    this.socket?.diagnostic('capture.agent_ears_bound', {
+      name: AGENT_EARS_NAME,
+      inputDeviceId: ears.deviceId,
+    });
 
-  installMicrophone(): void {
     const native = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = async constraints => {
       const wantsAudio = Boolean(constraints?.audio);
       const wantsVideo = Boolean(constraints?.video);
       if (!wantsAudio)
         return native(constraints);
-      const stream = new MediaStream([this.outgoingTrack()]);
-      if (wantsVideo) {
-        const video = await native({ video: constraints?.video, audio: false });
-        for (const track of video.getVideoTracks())
-          stream.addTrack(track);
-      }
+      this.socket?.diagnostic('microphone.agent_mike_requested', { wantsVideo });
+      const stream = await native({
+        audio: { deviceId: { exact: this.microphoneDeviceId! } },
+        video: wantsVideo ? constraints?.video : false,
+      });
       return stream;
     };
   }
 
-  capture(stream: MediaStream): void {
-    const tracks = stream.getAudioTracks();
-    if (!tracks.length)
+  private captureInput(stream: MediaStream): void {
+    const source = this.context.createMediaStreamSource(stream);
+    const processor = this.context.createScriptProcessor(2048, 2, 1);
+    const silentSink = this.context.createGain();
+    silentSink.gain.value = 0;
+    processor.onaudioprocess = event => this.processAudio(event.inputBuffer);
+    source.connect(processor);
+    processor.connect(silentSink);
+    silentSink.connect(this.context.destination);
+    this.captureSource = source;
+    this.captureProcessor = processor;
+    this.captureSink = silentSink;
+  }
+
+  private processAudio(buffer: AudioBuffer): void {
+    if (this.socket?.readyState !== WebSocket.OPEN || !buffer.numberOfChannels)
       return;
-    const context = new AudioContext({ sampleRate: CAPTURE_RATE });
-    this.captureContexts.add(context);
-    void context.resume();
-    const source = context.createMediaStreamSource(new MediaStream(tracks));
-    const processor = context.createScriptProcessor(2048, 1, 1);
-    const silence = context.createGain();
-    silence.gain.value = 0;
-    processor.onaudioprocess = event => {
-      if (this.socket?.readyState !== WebSocket.OPEN)
-        return;
-      const samples = event.inputBuffer.getChannelData(0);
-      const packet = new Uint8Array(1 + samples.length * 2);
-      packet[0] = AUDIO_CHANNEL;
-      const view = new DataView(packet.buffer);
-      for (let index = 0; index < samples.length; index++)
-        view.setInt16(1 + index * 2, Math.max(-1, Math.min(1, samples[index])) * 0x7fff, true);
-      this.socket.send(packet);
-    };
-    source.connect(processor).connect(silence).connect(context.destination);
-    for (const track of tracks)
-      track.addEventListener('ended', () => {
-        this.captureContexts.delete(context);
-        void context.close();
-      }, { once: true });
+    const mono = new Float32Array(buffer.length);
+    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+      const input = buffer.getChannelData(channel);
+      for (let index = 0; index < mono.length; index++)
+        mono[index] += input[index] / buffer.numberOfChannels;
+    }
+    const samples = resampleMono(mono, buffer.sampleRate, CAPTURE_RATE);
+    this.capturePacketCount += 1;
+    const peak = pcmPeak(samples);
+    this.capturePeak = Math.max(this.capturePeak, peak);
+    document.documentElement.dataset.frontDeskAudioPeak = String(peak);
+    this.socket.send(pcmPacket(AUDIO_CHANNEL, samples));
+    if (this.capturePacketCount === 1 || this.capturePacketCount % 100 === 0) {
+      this.socket.diagnostic('capture.audio_summary', {
+        packets: this.capturePacketCount,
+        samples: samples.length,
+        sourceRate: buffer.sampleRate,
+        peak: this.capturePeak,
+      });
+      this.capturePeak = 0;
+    }
   }
 
   captureVideo(track: MediaStreamTrack): void {
@@ -241,6 +298,14 @@ class MeetAudioBridge {
 
   play(bytes: Uint8Array): void {
     void this.context.resume();
+    this.playbackPacketCount += 1;
+    if (this.playbackPacketCount === 1 || this.playbackPacketCount % 50 === 0) {
+      this.socket?.diagnostic('playback.audio_summary', {
+        packets: this.playbackPacketCount,
+        bytes: bytes.byteLength,
+        contextState: this.context.state,
+      });
+    }
     const samples = new Float32Array(Math.floor(bytes.byteLength / 2));
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     for (let index = 0; index < samples.length; index++)
@@ -249,7 +314,7 @@ class MeetAudioBridge {
     buffer.copyToChannel(samples, 0);
     const source = this.context.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.microphone);
+    source.connect(this.context.destination);
     const now = this.context.currentTime;
     this.playbackTime = Math.max(now + 0.02, this.playbackTime);
     source.start(this.playbackTime);
@@ -258,8 +323,7 @@ class MeetAudioBridge {
 
   activate(): void {
     void this.context.resume();
-    for (const context of this.captureContexts)
-      void context.resume();
+    this.socket?.diagnostic('playback.activated', { contextState: this.context.state });
   }
 
   send(message: object): void {
@@ -268,37 +332,29 @@ class MeetAudioBridge {
   }
 
   close(): void {
+    this.captureSource?.disconnect();
+    this.captureProcessor?.disconnect();
+    this.captureSink?.disconnect();
     void this.context.close();
   }
 }
 
-function installPeerCapture(audio: MeetAudioBridge): void {
+function pcmPeak(samples: Float32Array): number {
+  let peak = 0;
+  for (const sample of samples)
+    peak = Math.max(peak, Math.round(Math.abs(sample) * 0x7fff));
+  return peak;
+}
+
+function installPeerVideoCapture(audio: MeetAudioBridge): void {
   const NativePeerConnection = window.RTCPeerConnection;
-  const nativeReplaceTrack = RTCRtpSender.prototype.replaceTrack;
-  RTCRtpSender.prototype.replaceTrack = function(track: MediaStreamTrack | null): Promise<void> {
-    const replacement = track?.kind === 'audio' && !audio.isOutgoingTrack(track) ? audio.outgoingTrack() : track;
-    return nativeReplaceTrack.call(this, replacement);
-  };
   window.RTCPeerConnection = class extends NativePeerConnection {
     constructor(configuration?: RTCConfiguration) {
       super(configuration);
       this.addEventListener('track', event => {
-        if (event.track.kind === 'audio')
-          audio.capture(event.streams[0] || new MediaStream([event.track]));
         if (event.track.kind === 'video')
           audio.captureVideo(event.track);
       });
-    }
-
-    override addTrack(track: MediaStreamTrack, ...streams: MediaStream[]): RTCRtpSender {
-      const replacement = track.kind === 'audio' && !audio.isOutgoingTrack(track) ? audio.outgoingTrack() : track;
-      return super.addTrack(replacement, ...streams);
-    }
-
-    override addTransceiver(trackOrKind: MediaStreamTrack | string, init?: RTCRtpTransceiverInit): RTCRtpTransceiver {
-      if (typeof trackOrKind !== 'string' && trackOrKind.kind === 'audio' && !audio.isOutgoingTrack(trackOrKind))
-        return super.addTransceiver(audio.outgoingTrack(), init);
-      return super.addTransceiver(trackOrKind, init);
     }
   };
 }
@@ -306,7 +362,9 @@ function installPeerCapture(audio: MeetAudioBridge): void {
 class MeetControls {
   private observer?: MutationObserver;
   private joined = false;
-  private participantReported = false;
+  private cameraDisabled = false;
+  private participantReported?: boolean;
+  private speakerState: 'closed' | 'settings' | 'speaker' | 'ready' = 'closed';
   private readonly handledAdmissionButtons = new WeakSet<HTMLButtonElement>();
 
   constructor(private readonly socket: WorkerSocket, private readonly audio: MeetAudioBridge) {}
@@ -325,6 +383,7 @@ class MeetControls {
   }
 
   leave(): void {
+    this.socket.diagnostic('controls.leave', { leaveButtonFound: Boolean(findButton(/leave call|leave meeting|hang up/i)) });
     const leave = findButton(/leave call|leave meeting|hang up/i);
     leave?.click();
     this.socket.close(1000, 'Meeting complete');
@@ -336,29 +395,71 @@ class MeetControls {
       if (this.handledAdmissionButtons.has(button))
         continue;
       this.handledAdmissionButtons.add(button);
+      this.socket.diagnostic('controls.admit_clicked');
       button.click();
     }
-    const hasClient = participantCount() >= 2;
+    const participant = participantState();
+    const hasClient = participant.count >= 2;
     if (hasClient !== this.participantReported) {
       this.participantReported = hasClient;
+      this.socket.diagnostic('controls.participant_state', { present: hasClient, ...participant });
       if (this.socket.readyState === WebSocket.OPEN)
         this.socket.send(JSON.stringify({ type: hasClient ? 'participant_arrived' : 'participant_left' }));
     }
+    this.configureSpeaker();
     const camera = findButton(/turn off camera/i);
-    if (camera) {
+    if (camera && !this.cameraDisabled) {
+      this.cameraDisabled = true;
+      this.socket.diagnostic('controls.camera_disabled');
       camera.click();
-      return;
     }
     if (this.joined)
       return;
-    const join = findButton(/join now|ask to join/i);
+    if (this.speakerState !== 'ready')
+      return;
+    const join = findButton(/join now|ask to join|switch here/i);
     if (join && !join.disabled) {
       this.joined = true;
       this.audio.activate();
+      this.socket.diagnostic('controls.join_clicked', { label: join.getAttribute('aria-label') || join.textContent || '' });
       join.click();
       this.socket.addEventListener('open', () => this.socket.send(JSON.stringify({ type: 'browser_joined' })), { once: true });
       if (this.socket.readyState === WebSocket.OPEN)
         this.socket.send(JSON.stringify({ type: 'browser_joined' }));
+    }
+  }
+
+  private configureSpeaker(): void {
+    if (this.speakerState === 'ready')
+      return;
+    const earsOption = findInteractiveDevice(AGENT_EARS_NAME);
+    if (earsOption) {
+      earsOption.click();
+      this.speakerState = 'ready';
+      this.socket.diagnostic('controls.speaker_configured', { speaker: AGENT_EARS_NAME });
+      queueMicrotask(() => findButton(/close dialogue/i)?.click());
+      return;
+    }
+    const speaker = findButton(/^speaker:/i);
+    if (speaker) {
+      if (this.speakerState !== 'speaker') {
+        this.speakerState = 'speaker';
+        speaker.click();
+      }
+      return;
+    }
+    const settings = findInteractiveExact('Settings');
+    if (settings) {
+      if (this.speakerState !== 'settings') {
+        this.speakerState = 'settings';
+        settings.click();
+      }
+      return;
+    }
+    if (this.speakerState === 'closed') {
+      const moreOptions = document.querySelector<HTMLButtonElement>('button[aria-label="More options"]');
+      if (moreOptions && moreOptions.offsetParent !== null)
+        moreOptions.click();
     }
   }
 
@@ -371,23 +472,31 @@ class MeetControls {
   }
 }
 
-function participantCount(): number {
-  const peopleButton = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button =>
-    /^people\b/i.test(button.getAttribute('aria-label') || '') && button.offsetParent !== null,
+type ParticipantState = { count: number; source: 'meet_badge' | 'people_control' | 'participant_ids' | 'fail_closed' };
+
+function participantState(): ParticipantState {
+  const badgeCounts = [...document.querySelectorAll<HTMLElement>('[animatable][jscontroller]')]
+    .filter(element => element.offsetParent !== null && /^\d+$/.test(element.textContent?.trim() || ''))
+    .map(element => Number.parseInt(element.textContent!.trim(), 10));
+  const peopleControl = [...document.querySelectorAll<HTMLElement>('button, [role="button"]')].find(element =>
+    /^people\b/i.test(`${element.getAttribute('aria-label') || ''} ${element.textContent || ''}`.trim()) && element.offsetParent !== null,
   );
-  const visibleCount = peopleButton?.textContent?.match(/\d+/)?.[0];
+  const visibleCount = peopleControl?.textContent?.match(/\d+/)?.[0]
+    || peopleControl?.getAttribute('aria-label')?.match(/\d+/)?.[0];
   const participantIds = new Set(
     [...document.querySelectorAll<HTMLElement>('[data-participant-id]')]
       .map(element => element.dataset.participantId)
       .filter((value): value is string => Boolean(value)),
   );
-  const count = visibleCount ? Number.parseInt(visibleCount, 10) : Math.max(1, participantIds.size);
+  const badgeCount = badgeCounts.length ? Math.max(...badgeCounts) : undefined;
+  const count = badgeCount ?? (visibleCount ? Number.parseInt(visibleCount, 10) : Math.max(1, participantIds.size));
+  const source = badgeCount !== undefined ? 'meet_badge' : visibleCount ? 'people_control' : participantIds.size ? 'participant_ids' : 'fail_closed';
   document.documentElement.setAttribute('data-front-desk-participant-debug', JSON.stringify({
-    source: visibleCount ? 'people_button' : participantIds.size ? 'participant_ids' : 'fail_closed',
+    source,
     participantIds: [...participantIds],
     count,
   }));
-  return count;
+  return { count, source };
 }
 
 function findButton(pattern: RegExp): HTMLButtonElement | undefined {
@@ -399,6 +508,16 @@ function findButtons(pattern: RegExp): HTMLButtonElement[] {
     const label = `${button.getAttribute('aria-label') || ''} ${button.textContent || ''}`.trim();
     return pattern.test(label) && button.offsetParent !== null;
   });
+}
+
+function findInteractiveExact(text: string): HTMLElement | undefined {
+  return [...document.querySelectorAll<HTMLElement>('button, [role="button"], [role="menuitem"], [role="option"]')]
+    .find(element => element.offsetParent !== null && element.textContent?.trim() === text);
+}
+
+function findInteractiveDevice(name: string): HTMLElement | undefined {
+  return [...document.querySelectorAll<HTMLElement>('button, [role="button"], [role="menuitemradio"], [role="option"]')]
+    .find(element => element.offsetParent !== null && isAudioDeviceLabel(element.textContent?.trim() || '', name));
 }
 
 initialize();

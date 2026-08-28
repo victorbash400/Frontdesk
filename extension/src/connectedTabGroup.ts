@@ -42,12 +42,12 @@ export class ConnectedBrowser {
     chrome.tabs.onRemoved.addListener(this._onTabRemovedListener);
   }
 
-  async initialize(selectedTab: chrome.tabs.Tab): Promise<void> {
+  async initialize(selectedTab: chrome.tabs.Tab, bootstrapUrl: string): Promise<void> {
     if (selectedTab.windowId === undefined)
       throw new Error('The selected browser tab has no Chrome window.');
     this._windowId = selectedTab.windowId;
     this._connection.setPreferredWindowId(selectedTab.windowId);
-    this._connection.setBootstrapTab(selectedTab);
+    this._connection.setBootstrapTab(selectedTab, bootstrapUrl);
     await this._trackAndAttach(selectedTab);
     this._connection.didInitialize();
   }

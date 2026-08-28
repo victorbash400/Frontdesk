@@ -100,11 +100,11 @@ export class RelayConnection {
     this._preferredWindowId = windowId;
   }
 
-  setBootstrapTab(tab: chrome.tabs.Tab): void {
-    if (tab.id === undefined || !tab.url || !/^https?:/.test(tab.url))
+  setBootstrapTab(tab: chrome.tabs.Tab, url: string): void {
+    if (tab.id === undefined || !/^https?:/.test(url))
       throw new Error('The Front Desk browser bridge tab is invalid.');
     this._bootstrapTabId = tab.id;
-    this._newTabUrl = tab.url;
+    this._newTabUrl = url;
   }
 
   close(message: string): void {

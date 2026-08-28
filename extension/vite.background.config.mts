@@ -14,6 +14,7 @@ export default defineConfig({
         content: resolve(extensionRoot, 'src/content.ts'),
         meetAgent: resolve(extensionRoot, 'src/meetAgent.ts'),
         meetRelay: resolve(extensionRoot, 'src/meetRelay.ts'),
+        offscreen: resolve(extensionRoot, 'src/offscreen.ts'),
       },
       fileName: (_format, entryName) => entryName === 'background' ? 'background.mjs' : `${entryName}.js`,
       formats: ['es'],

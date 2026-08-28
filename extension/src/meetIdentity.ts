@@ -8,7 +8,7 @@ export type MeetRelayIdentity = {
 export type RelayDecision = 'same-tab' | 'reject-duplicate-tab' | 'replace-runtime';
 
 export function relayDecision(current: MeetRelayIdentity, incoming: MeetRelayIdentity): RelayDecision {
-  if (current.runtimeId !== incoming.runtimeId)
+  if (current.meetingId !== incoming.meetingId || current.runtimeId !== incoming.runtimeId)
     return 'replace-runtime';
   if (current.bridgeId === incoming.bridgeId && current.tabId === incoming.tabId)
     return 'same-tab';

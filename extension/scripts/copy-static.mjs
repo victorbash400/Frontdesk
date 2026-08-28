@@ -8,3 +8,4 @@ await mkdir(resolve(outputRoot, 'icons'), { recursive: true });
 await cp(resolve(extensionRoot, 'manifest.json'), resolve(outputRoot, 'manifest.json'));
 await cp(resolve(extensionRoot, 'icons'), resolve(outputRoot, 'icons'), { recursive: true });
 await cp(resolve(extensionRoot, 'cursor-alt-svgrepo-com.svg'), resolve(outputRoot, 'cursor-alt-svgrepo-com.svg'));
+await cp(resolve(extensionRoot, 'offscreen.html'), resolve(outputRoot, 'offscreen.html'));

@@ -1,6 +1,6 @@
 {
   "name": "@front-desk/browser-extension",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Front Desk browser bridge built on the Playwright extension protocol",
   "private": true,
   "repository": {
