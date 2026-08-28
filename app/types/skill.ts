@@ -1,4 +1,4 @@
-export type SkillSource = "general" | "user" | "plugin";
+export type SkillSource = "builtin" | "organization";
 
 export type OperatorSkill = {
   id: string;
@@ -7,8 +7,10 @@ export type OperatorSkill = {
   instructions: string;
   updatedAt: string;
   source: SkillSource;
+  batchName: string;
   pluginId?: string;
+  requiredPluginIds: string[];
   sourceUrl?: string;
+  deletable: boolean;
+  version: number;
 };
-
-export type CatalogSkill = Omit<OperatorSkill, "updatedAt">;

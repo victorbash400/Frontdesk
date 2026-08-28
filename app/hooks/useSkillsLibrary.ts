@@ -2,70 +2,56 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { loadSkills, saveSkills } from "../lib/skillStorage";
-import type { CatalogSkill, OperatorSkill } from "../types/skill";
+import { authenticatedFetch } from "../lib/authenticatedFetch";
+import type { OperatorSkill } from "../types/skill";
 
-export function useSkillsLibrary(accountId: string) {
+type SkillUpdate = Pick<OperatorSkill, "name" | "description" | "instructions" | "batchName" | "requiredPluginIds">;
+
+export function useSkillsLibrary(_accountId: string) {
   const [skills, setSkills] = useState<OperatorSkill[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string>();
 
+  const refresh = useCallback(async () => {
+    try {
+      const response = await authenticatedFetch("/api/skills", { cache: "no-store" });
+      const payload = await response.json() as OperatorSkill[] | { error?: string };
+      if (!response.ok || !Array.isArray(payload)) throw new Error(!Array.isArray(payload) && payload.error || "Could not load skills.");
+      setSkills(payload);
+      setError(undefined);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load skills.");
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      try {
-        setSkills(loadSkills(accountId));
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Could not load skills.");
-      } finally {
-        setLoaded(true);
-      }
-    });
+    const frame = window.requestAnimationFrame(() => void refresh());
     return () => window.cancelAnimationFrame(frame);
-  }, [accountId]);
+  }, [refresh]);
 
-  const createSkill = useCallback((name: string, description: string) => {
-    const cleanName = name.trim();
-    if (!cleanName) throw new Error("A skill needs a name.");
-    if (skills.some((skill) => normalizeName(skill.name) === normalizeName(cleanName))) throw new Error(`“${cleanName}” already exists.`);
-    const id = crypto.randomUUID();
-    const skill: OperatorSkill = {
-      id,
-      name: cleanName,
-      description: description.trim(),
-      instructions: "",
-      updatedAt: new Date().toISOString(),
-      source: "user",
-    };
-    const next = [skill, ...skills];
-    saveSkills(accountId, next);
-    setSkills(next);
-    setError(undefined);
-    return id;
-  }, [accountId, skills]);
+  const createSkill = useCallback(async (name: string, description: string) => {
+    const response = await authenticatedFetch("/api/skills", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, description, instructions: "", batch_name: "Created by you", required_plugin_ids: [] }) });
+    const payload = await response.json() as OperatorSkill & { error?: string };
+    if (!response.ok) throw new Error(payload.error || "Could not create the skill.");
+    setSkills((current) => [...current, payload]);
+    return payload.id;
+  }, []);
 
-  const addCatalogSkill = useCallback((catalogSkill: CatalogSkill) => {
-    if (skills.some((skill) => skill.id === catalogSkill.id)) return catalogSkill.id;
-    const skill: OperatorSkill = { ...catalogSkill, updatedAt: new Date().toISOString() };
-    const next = [...skills, skill];
-    saveSkills(accountId, next);
-    setSkills(next);
-    setError(undefined);
-    return skill.id;
-  }, [accountId, skills]);
+  const updateSkill = useCallback(async (id: string, update: SkillUpdate) => {
+    const response = await authenticatedFetch(`/api/skills/${encodeURIComponent(id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: update.name, description: update.description, instructions: update.instructions, batch_name: update.batchName, required_plugin_ids: update.requiredPluginIds }) });
+    const payload = await response.json() as OperatorSkill & { error?: string };
+    if (!response.ok) throw new Error(payload.error || "Could not update the skill.");
+    setSkills((current) => current.map((skill) => skill.id === id ? payload : skill));
+  }, []);
 
-  const updateSkill = useCallback((id: string, update: Pick<OperatorSkill, "name" | "description" | "instructions">) => {
-    const name = update.name.trim();
-    if (!name) throw new Error("A skill needs a name.");
-    if (skills.some((skill) => skill.id !== id && normalizeName(skill.name) === normalizeName(name))) throw new Error(`“${name}” already exists.`);
-    const next = skills.map((skill) => skill.id === id ? { ...skill, ...update, name, updatedAt: new Date().toISOString() } : skill);
-    saveSkills(accountId, next);
-    setSkills(next);
-    setError(undefined);
-  }, [accountId, skills]);
+  const deleteSkill = useCallback(async (id: string) => {
+    const response = await authenticatedFetch(`/api/skills/${encodeURIComponent(id)}`, { method: "DELETE" });
+    const payload = await response.json() as { error?: string };
+    if (!response.ok) throw new Error(payload.error || "Could not delete the skill.");
+    setSkills((current) => current.filter((skill) => skill.id !== id));
+  }, []);
 
-  return { addCatalogSkill, createSkill, error, loaded, skills, updateSkill };
-}
-
-function normalizeName(name: string) {
-  return name.trim().normalize("NFKC").toLocaleLowerCase();
+  return { createSkill, deleteSkill, error, loaded, refresh, skills, updateSkill };
 }

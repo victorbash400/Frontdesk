@@ -1,0 +1,3 @@
+.icon { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border: 1px solid #e4e4e0; border-radius: 8px; background: #fff; color: #666661; }
+.icon svg, .icon img { width: 17px; height: 17px; object-fit: contain; }
+.icon svg { stroke-width: 1.7; }

@@ -14,17 +14,18 @@ type GoalSkillSelectorProps = {
 };
 
 export function GoalSkillSelector({ skills, plugins, selectedIds, onChange }: GoalSkillSelectorProps) {
-  const general = skills.filter((skill) => !skill.pluginId);
-  const pluginGroups = plugins
-    .map((plugin) => ({ plugin, skills: skills.filter((skill) => skill.pluginId === plugin.id) }))
-    .filter((group) => group.skills.length);
+  const batches = [...new Set(skills.map((skill) => skill.batchName))];
 
   return (
     <section aria-label="Goal skills" className={styles.selector}>
       <header><strong>Skills</strong><small>Workflows available through the selected plugins</small></header>
       {!skills.length ? <p className={styles.empty}>Select a plugin to see its skills</p> : null}
-      {general.length ? <SkillRows onChange={onChange} selectedIds={selectedIds} skills={general} title="General" /> : null}
-      {pluginGroups.map(({ plugin, skills: pluginSkills }) => <SkillRows icon={<PluginIcon plugin={plugin} />} key={plugin.id} onChange={onChange} selectedIds={selectedIds} skills={pluginSkills} title={plugin.name} />)}
+      {batches.map((batchName) => {
+        const batchSkills = skills.filter((skill) => skill.batchName === batchName);
+        const pluginId = batchSkills.find((skill) => skill.pluginId)?.pluginId;
+        const plugin = plugins.find((item) => item.id === pluginId);
+        return <SkillRows icon={plugin ? <PluginIcon plugin={plugin} /> : undefined} key={batchName} onChange={onChange} selectedIds={selectedIds} skills={batchSkills} title={batchName} />;
+      })}
     </section>
   );
 }

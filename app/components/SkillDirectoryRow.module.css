@@ -6,7 +6,6 @@
 .open strong, .open small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .open strong { font-size: 11px; font-weight: 570; }
 .open small { color: #8b8b86; font-size: 10px; }
-.add, .added { display: flex; min-width: 58px; height: 27px; padding: 0 9px; align-items: center; justify-content: center; gap: 5px; border-radius: 8px; font-size: 10px; }
-.add { border: 1px solid #d8d8d4; background: #fff; color: #41413e; cursor: pointer; }
-.added { border: 0; background: transparent; color: #92928d; }
-.add svg, .added svg { width: 12px; height: 12px; }
+.delete { display: grid; width: 28px; height: 28px; flex: 0 0 auto; padding: 0; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #aaa9a4; cursor: pointer; }
+.delete:hover { background: #f5eeee; color: #a23d38; }
+.delete svg { width: 14px; height: 14px; stroke-width: 1.7; }

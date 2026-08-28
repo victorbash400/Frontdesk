@@ -19,7 +19,7 @@ export async function GET() {
     if (!response.ok) return Response.json({ error: "Google profile photo could not be loaded" }, { status: response.status });
     return new Response(await response.arrayBuffer(), {
       headers: {
-        "Cache-Control": "private, max-age=3600",
+        "Cache-Control": "private, max-age=31536000, immutable",
         "Content-Type": response.headers.get("content-type") || "image/jpeg",
       },
     });

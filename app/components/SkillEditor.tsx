@@ -9,19 +9,20 @@ import styles from "./SkillEditor.module.css";
 type SkillEditorProps = {
   skill: OperatorSkill;
   onBack: () => void;
-  onSave: (update: Pick<OperatorSkill, "name" | "description" | "instructions">) => void;
+  onSave: (update: Pick<OperatorSkill, "name" | "description" | "instructions" | "batchName">) => Promise<void>;
 };
 
 export function SkillEditor({ skill, onBack, onSave }: SkillEditorProps) {
   const [name, setName] = useState(skill.name);
   const [description, setDescription] = useState(skill.description);
   const [instructions, setInstructions] = useState(skill.instructions);
+  const [batchName, setBatchName] = useState(skill.batchName);
   const [error, setError] = useState<string>();
-  const changed = name !== skill.name || description !== skill.description || instructions !== skill.instructions;
+  const changed = name !== skill.name || description !== skill.description || instructions !== skill.instructions || batchName !== skill.batchName;
 
-  function save() {
+  async function save() {
     try {
-      onSave({ name, description, instructions });
+      await onSave({ name, description, instructions, batchName });
       setError(undefined);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not save this skill.");
@@ -38,6 +39,7 @@ export function SkillEditor({ skill, onBack, onSave }: SkillEditorProps) {
       <article>
         <input aria-label="Skill name" className={styles.name} onChange={(event) => { setName(event.target.value); setError(undefined); }} value={name} />
         <input aria-label="When to use this skill" className={styles.description} onChange={(event) => setDescription(event.target.value)} placeholder="When should Front Desk use this skill?" value={description} />
+        <input aria-label="Skill batch" className={styles.description} onChange={(event) => setBatchName(event.target.value)} placeholder="Skill batch" value={batchName} />
         <label htmlFor="skill-instructions">Instructions</label>
         <textarea aria-label="Skill instructions" id="skill-instructions" onChange={(event) => setInstructions(event.target.value)} placeholder="Write the instructions Front Desk should follow." spellCheck="true" value={instructions} />
         {error ? <p role="alert">{error}</p> : null}

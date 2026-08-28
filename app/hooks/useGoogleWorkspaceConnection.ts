@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { authenticatedFetch } from "../lib/authenticatedFetch";
 
-export type WorkspacePermission = { id: string; name: string; description: string; enabled: boolean };
+export type WorkspacePermission = { id: string; name: string; description: string; enabled: boolean; available: boolean; unavailable_reason?: string | null };
 type ConnectionState = {
   configured: boolean;
   connected: boolean;

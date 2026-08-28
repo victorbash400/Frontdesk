@@ -7,7 +7,6 @@ import { useGoals } from "../hooks/useGoals";
 import { usePluginDirectory } from "../hooks/usePluginDirectory";
 import { useSkillsLibrary } from "../hooks/useSkillsLibrary";
 import { pluginDirectory } from "../lib/pluginDirectory";
-import { skillCatalog } from "../lib/skillCatalog";
 import type { FileSystemNode } from "../types/filesystem";
 import type { GoalStatus } from "../types/goal";
 import { CreateGoalDialog } from "./CreateGoalDialog";
@@ -47,13 +46,7 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const effectiveClientId = selectedClientId === "all" ? undefined : selectedClientId;
   const availablePlugins = useMemo(() => pluginDirectory.filter((plugin) => plugins.enabledIds.has(plugin.id)), [plugins.enabledIds]);
-  const availableSkills = useMemo(() => {
-    const savedIds = new Set(skills.skills.map((skill) => skill.id));
-    const pluginSkills = skillCatalog
-      .filter((skill) => skill.pluginId && plugins.enabledIds.has(skill.pluginId) && !savedIds.has(skill.id))
-      .map((skill) => ({ ...skill, updatedAt: "" }));
-    return [...skills.skills, ...pluginSkills];
-  }, [plugins.enabledIds, skills.skills]);
+  const availableSkills = useMemo(() => skills.skills.filter((skill) => skill.requiredPluginIds.every((pluginId) => plugins.enabledIds.has(pluginId))), [plugins.enabledIds, skills.skills]);
   const workspaceError = error ?? plugins.error ?? skills.error;
   const visible = useMemo(() => {
     const clientIds = new Set(clients.map((client) => client.id));

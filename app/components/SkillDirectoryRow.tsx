@@ -1,11 +1,7 @@
-import { Check, FileText, Plus } from "lucide-react";
-
-import type { CatalogSkill } from "../types/skill";
+import { FileText, Trash2 } from "lucide-react";
+import type { OperatorSkill } from "../types/skill";
 import styles from "./SkillDirectoryRow.module.css";
 
-export function SkillDirectoryRow({ added, onAdd, onOpen, skill }: { added: boolean; onAdd: () => void; onOpen: () => void; skill: CatalogSkill }) {
-  return <article className={styles.row}>
-    <button className={styles.open} onClick={onOpen} type="button"><FileText aria-hidden="true" /><span><strong>{skill.name}</strong><small>{skill.description}</small></span></button>
-    {skill.source === "user" ? <span className={styles.added}><Check aria-hidden="true" />Added</span> : <button className={added ? styles.added : styles.add} disabled={added} onClick={onAdd} type="button">{added ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}{added ? "Added" : "Add"}</button>}
-  </article>;
+export function SkillDirectoryRow({ onDelete, onOpen, skill }: { onDelete: () => void; onOpen: () => void; skill: OperatorSkill }) {
+  return <li className={styles.row}><button className={styles.open} onClick={onOpen} type="button"><FileText aria-hidden="true" /><span><strong>{skill.name}</strong><small>{skill.description}</small></span></button>{skill.deletable ? <button aria-label={`Delete ${skill.name}`} className={styles.delete} onClick={onDelete} title={`Delete ${skill.name}`} type="button"><Trash2 aria-hidden="true" /></button> : null}</li>;
 }
