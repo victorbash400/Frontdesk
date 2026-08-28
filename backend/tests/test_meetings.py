@@ -12,12 +12,18 @@ from agents.meet_agent import MEET_AGENT_INSTRUCTION, MeetAgentContext, live_con
 from app.database import SessionLocal
 from app.config import get_settings
 from app.main import app
-from meetings.agent_session import AgentIdentity, _bridge, _register_bridge_and_wait_for_participant, _run_identity_bound_agent, create_agent_ticket, verify_agent_ticket
+from meetings.agent_session import AgentIdentity, _bridge, _pcm_peak, _register_bridge_and_wait_for_participant, _run_identity_bound_agent, create_agent_ticket, verify_agent_ticket
+from meetings.browser_worker import join_meeting
 from meetings.events import decode_pubsub_event
 from meetings.models import Meeting, MeetingEvent
 from meetings.service import record_agent_tool
 from meetings.sample import ensure_angeline_sample
 from tools.supervisor_tools import execute_client_tool
+
+
+def test_pcm_peak_distinguishes_silence_from_client_speech() -> None:
+    assert _pcm_peak(b"\x00\x00" * 32) == 0
+    assert _pcm_peak(b"\x00\x01\x00\xff") == 256
 
 
 def test_create_meeting_invites_client_and_persists_space() -> None:
@@ -155,6 +161,36 @@ def test_replacement_meeting_ticket_revokes_previous_ticket() -> None:
             raise AssertionError("A replacement meeting ticket must revoke the previous ticket.")
 
 
+def test_agent_ticket_supersedes_every_other_active_meeting() -> None:
+    with TestClient(app) as client:
+        account = _account(client, "exclusive-meeting@example.com")
+        start = datetime.now(timezone.utc)
+        with SessionLocal() as session:
+            older = Meeting(
+                account_id=account["id"], client_id="potato", client_email="client@example.com",
+                title="Older", state="agent_active", meet_uri="https://meet.google.com/old-meeting",
+                start_time=start, end_time=start + timedelta(minutes=30), active_runtime_id="old-runtime",
+            )
+            current = Meeting(
+                account_id=account["id"], client_id="potato", client_email="client@example.com",
+                title="Current", state="invited", meet_uri="https://meet.google.com/new-meeting",
+                start_time=start, end_time=start + timedelta(minutes=30),
+            )
+            session.add_all([older, current])
+            session.commit()
+            older_id, current_id = older.id, current.id
+
+        create_agent_ticket(account["id"], current_id, runtime_id="current-runtime", bridge_id="current-bridge")
+
+        with SessionLocal() as session:
+            replaced = session.get(Meeting, older_id)
+            launched = session.get(Meeting, current_id)
+            assert replaced and replaced.state == "superseded"
+            assert replaced.active_runtime_id is None
+            assert launched and launched.state == "launching"
+            assert launched.active_runtime_id == "current-runtime"
+
+
 def test_bridge_requires_exact_identity_and_persists_tab() -> None:
     with TestClient(app) as client:
         account = _account(client, "meet-bridge-identity@example.com")
@@ -221,6 +257,15 @@ def test_agent_does_not_generate_synthetic_client_speech() -> None:
     source = inspect.getsource(_run_identity_bound_agent)
     assert "send_realtime_input(text=" not in source
     assert "ready_waiting_for_speech" in source
+
+
+def test_browser_opener_does_not_compete_with_meet_worker_controls() -> None:
+    source = inspect.getsource(join_meeting)
+    assert "browser_navigate" in source
+    assert "browser_snapshot" in source
+    assert "browser_click" not in source
+    assert "Join now" not in source
+    assert "Turn on microphone" not in source
 
 
 def test_meet_agent_tool_calls_are_persisted() -> None:

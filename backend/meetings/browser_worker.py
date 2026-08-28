@@ -1,10 +1,10 @@
 import base64
 import json
 import logging
-import re
 from uuid import uuid4
 
 from app.config import get_settings
+from app.database import SessionLocal
 from tools.browser_use.playwright import connected_playwright_toolset
 
 from .agent_session import create_agent_ticket
@@ -30,8 +30,13 @@ async def join_meeting(meeting: Meeting, *, voice: str = "Kore", language: str =
         "socketUrl": socket_url,
     }, separators=(",", ":")).encode()).decode().rstrip("=")
     worker_url = f"{meeting.meet_uri}#front-desk-meet={config}"
-    logger.info("meeting=%s worker=launch meet=%s", meeting.id, meeting.meet_uri)
+    logger.info(
+        "meeting=%s runtime=%s bridge=%s worker=launch meet=%s",
+        meeting.id, runtime_id, bridge_id, meeting.meet_uri,
+    )
     toolset = await connected_playwright_toolset()
+    logger.info("meeting=%s runtime=%s worker=browser_preflight_passed", meeting.id, runtime_id)
+    browser_opened = False
     try:
         tools = await toolset.get_tools()
         navigate = next((tool for tool in tools if tool.name == "browser_navigate"), None)
@@ -42,43 +47,32 @@ async def join_meeting(meeting: Meeting, *, voice: str = "Kore", language: str =
         if result.isError:
             message = " ".join(getattr(item, "text", "") for item in result.content).strip()
             raise RuntimeError(message or "Browser Use could not open Google Meet.")
+        browser_opened = True
         snapshot = await session.call_tool("browser_snapshot", arguments={})
         snapshot_text = " ".join(getattr(item, "text", "") for item in snapshot.content).strip()
         meeting_code = meeting.meet_uri.rstrip("/").rsplit("/", 1)[-1]
         if snapshot.isError or meeting_code not in snapshot_text:
             raise RuntimeError("Browser Use did not confirm the Google Meet page after navigation.")
-        logger.info("meeting=%s worker=page_ready", meeting.id)
-        if "Getting ready" in snapshot_text:
-            await session.call_tool("browser_wait_for", arguments={"time": 10})
-            snapshot = await session.call_tool("browser_snapshot", arguments={})
-            snapshot_text = " ".join(getattr(item, "text", "") for item in snapshot.content).strip()
-        microphone_match = re.search(r'button "Turn on microphone"[^\n]*\[ref=([^\]]+)\]', snapshot_text, re.IGNORECASE)
-        if microphone_match:
-            microphone = await session.call_tool("browser_click", arguments={
-                "element": "Google Meet agent microphone button",
-                "target": microphone_match.group(1),
-            })
-            if microphone.isError:
-                message = " ".join(getattr(item, "text", "") for item in microphone.content).strip()
-                raise RuntimeError(message or "Browser Use could not turn on the meeting agent microphone.")
-            logger.info("meeting=%s worker=virtual_microphone_enabled", meeting.id)
-        if re.search(r'button "Switch here"', snapshot_text, re.IGNORECASE):
-            raise RuntimeError("Google Meet is active in another tab. Front Desk will not transfer that call.")
-        join_match = re.search(r'button "(?:Join now|Ask to join)"[^\n]*\[ref=([^\]]+)\]', snapshot_text, re.IGNORECASE)
-        if join_match:
-            click = await session.call_tool("browser_click", arguments={
-                "element": "Google Meet join button",
-                "target": join_match.group(1),
-            })
-            if click.isError:
-                message = " ".join(getattr(item, "text", "") for item in click.content).strip()
-                raise RuntimeError(message or "Browser Use could not join Google Meet.")
-            logger.info("meeting=%s worker=join_clicked", meeting.id)
-    except Exception:
-        logger.exception("meeting=%s worker=launch_failed", meeting.id)
+        logger.info("meeting=%s runtime=%s worker=page_ready control_owner=meet_worker", meeting.id, runtime_id)
+    except Exception as error:
+        if browser_opened:
+            close = await session.call_tool("browser_close", arguments={})
+            logger.info("meeting=%s runtime=%s worker=failed_tab_closed success=%s", meeting.id, runtime_id, not close.isError)
+        with SessionLocal() as database:
+            current = database.get(Meeting, meeting.id)
+            if current and current.active_runtime_id == runtime_id:
+                current.state = "failed"
+                current.failure = str(error).strip() or type(error).__name__
+                database.commit()
+        logger.exception("meeting=%s runtime=%s bridge=%s worker=launch_failed", meeting.id, runtime_id, bridge_id)
         raise
     finally:
         await toolset.close()
+    with SessionLocal() as database:
+        current = database.get(Meeting, meeting.id)
+        if current and current.active_runtime_id == runtime_id and current.state == "launching":
+            current.state = "browser_opened"
+            database.commit()
     return {
         "meetingId": meeting.id,
         "runtimeId": runtime_id,

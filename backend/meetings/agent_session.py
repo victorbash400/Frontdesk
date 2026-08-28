@@ -9,8 +9,9 @@ from contextlib import suppress
 from dataclasses import dataclass
 from uuid import uuid4
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 from google.genai import errors, types
+from sqlalchemy import select
 
 from agents.meet_agent import MeetAgentContext, live_config
 from app.config import get_settings
@@ -59,10 +60,25 @@ def create_agent_ticket(
         if meeting:
             if meeting.account_id != account_id:
                 raise ValueError("Meeting agent ticket account does not own this meeting.")
+            active_states = {"launching", "browser_opened", "browser_ready", "waiting_for_client", "client_joined", "agent_active"}
+            previous_meetings = session.scalars(select(Meeting).where(
+                Meeting.account_id == account_id,
+                Meeting.id != meeting_id,
+                Meeting.state.in_(active_states),
+            )).all()
+            for previous in previous_meetings:
+                previous.state = "superseded"
+                previous.failure = "Replaced by a newer meeting runtime."
+                previous.active_agent_ticket_id = None
+                previous.active_runtime_id = None
+                previous.active_bridge_id = None
+                previous.active_tab_id = None
             meeting.active_agent_ticket_id = ticket_id
             meeting.active_runtime_id = runtime_id
             meeting.active_bridge_id = bridge_id
             meeting.active_tab_id = None
+            meeting.state = "launching"
+            meeting.failure = ""
             session.commit()
     payload = {
         "account_id": account_id,
@@ -130,7 +146,7 @@ async def run_meet_agent(websocket: WebSocket, meeting_id: str, ticket: str, voi
             await websocket.send_json({"type": "error", "error": str(error)})
         with suppress(RuntimeError):
             await websocket.close(code=1008)
-    except RuntimeError as error:
+    except (HTTPException, RuntimeError) as error:
         logger.exception("meeting=%s connection=%s agent=failed error=%s", meeting_id, connection_id, error)
         with suppress(RuntimeError):
             await websocket.send_json({"type": "error", "error": str(error)})
@@ -172,9 +188,14 @@ async def _run_identity_bound_agent(
                 voice=voice,
                 language=LANGUAGES[language],
             )
+        logger.info(
+            "meeting=%s runtime=%s agent=context_loaded goals=%s documents=%s voice=%s language=%s",
+            meeting_id, identity.runtime_id, len(context.goals), len(context.documents), voice, language,
+        )
         tab_id = await _register_bridge_and_wait_for_participant(websocket, identity)
         with SessionLocal() as session:
             mark_agent_active(session, require_meeting(session, account_id, meeting_id))
+        logger.info("meeting=%s runtime=%s tab=%s agent=participant_gate_open", meeting_id, identity.runtime_id, tab_id)
         client = create_genai_client(settings)
         session_state = _live_sessions.setdefault(identity.runtime_id, {"handle": None})
         session_handle = session_state.get("handle")
@@ -187,6 +208,7 @@ async def _run_identity_bound_agent(
             model=settings.gemini_voice_model,
             config=live_config(context, str(session_handle) if session_handle else None),
         ) as live:
+            logger.info("meeting=%s runtime=%s live=%s gemini=connected model=%s", meeting_id, identity.runtime_id, live_session_id, settings.gemini_voice_model)
             await websocket.send_json({"type": "agent_ready"})
             logger.info("meeting=%s runtime=%s live=%s agent=ready_waiting_for_speech resumed=%s", meeting_id, identity.runtime_id, live_session_id, bool(session_handle))
             outcome = await _bridge(websocket, live, account_id, context.client_id, meeting_id, session_state)
@@ -239,6 +261,9 @@ async def _register_bridge_and_wait_for_participant(websocket: WebSocket, identi
         if payload.get("type") == "participant_arrived":
             logger.info("meeting=%s runtime=%s tab=%s participant=arrived source=meet_ui", identity.meeting_id, identity.runtime_id, registered_tab_id)
             return registered_tab_id
+        if payload.get("type") == "diagnostic":
+            _record_bridge_diagnostic(identity.meeting_id, identity.runtime_id, identity.bridge_id, registered_tab_id, payload)
+            continue
         if payload.get("type") == "end_meeting":
             raise RuntimeError("The meeting ended before the client arrived.")
 
@@ -246,18 +271,27 @@ async def _register_bridge_and_wait_for_participant(websocket: WebSocket, identi
 async def _handle_live_error(websocket: WebSocket, meeting_id: str, ticket: str, error: errors.APIError) -> None:
     error_text = str(error)
     aborted = error_text.startswith("1008 ") or "operation was aborted" in error_text.lower()
+    identity: AgentIdentity | None = None
     with suppress(ValueError):
         identity = verify_agent_ticket(ticket, meeting_id)
-        if aborted:
+        if aborted and identity:
             _live_sessions.pop(identity.runtime_id, None)
     event_type = "gemini.session_aborted" if aborted else "gemini.session_exhausted"
     logger.warning("meeting=%s gemini=%s error=%s", meeting_id, "session_reset" if aborted else "capacity_reset", error)
     with SessionLocal() as session:
         record_meeting_diagnostic(session, meeting_id, event_type, {"error": error_text})
+        if not aborted and identity:
+            mark_meeting_state(session, require_meeting(session, identity.account_id, meeting_id), "failed", error_text)
+    if aborted:
+        with suppress(RuntimeError):
+            await websocket.send_json({"type": "retrying", "error": "Gemini Live session ended. Reconnecting automatically."})
+        with suppress(RuntimeError):
+            await websocket.close(code=1012, reason="Gemini Live session reset")
+        return
     with suppress(RuntimeError):
-        await websocket.send_json({"type": "retrying", "error": "Gemini Live session ended. Reconnecting automatically."})
+        await websocket.send_json({"type": "error", "error": f"Gemini Live unavailable: {error_text}"})
     with suppress(RuntimeError):
-        await websocket.close(code=1012 if aborted else 1013, reason="Gemini Live session reset")
+        await websocket.close(code=1008, reason="Gemini Live unavailable")
 
 
 async def _bridge(
@@ -270,6 +304,10 @@ async def _bridge(
 ) -> str:
     async def receive_media() -> str:
         audio_received = False
+        speech_detected = False
+        audio_packets = 0
+        audio_bytes = 0
+        maximum_peak = 0
         while True:
             message = await websocket.receive()
             if message.get("type") == "websocket.disconnect":
@@ -278,11 +316,26 @@ async def _bridge(
             if packet:
                 channel, payload = packet[0], packet[1:]
                 if channel == AUDIO_PACKET and payload:
+                    audio_packets += 1
+                    audio_bytes += len(payload)
                     if not audio_received:
                         audio_received = True
                         with SessionLocal() as session:
                             record_meeting_diagnostic(session, meeting_id, "media.client_audio_received", {"bytes": len(payload)})
                         logger.info("meeting=%s media=client_audio_received", meeting_id)
+                    peak = _pcm_peak(payload)
+                    maximum_peak = max(maximum_peak, peak)
+                    if not speech_detected and peak >= 256:
+                        speech_detected = True
+                        with SessionLocal() as session:
+                            record_meeting_diagnostic(session, meeting_id, "media.client_speech_detected", {"peak": peak})
+                        logger.info("meeting=%s media=client_speech_detected", meeting_id)
+                    if audio_packets == 1 or audio_packets % 100 == 0:
+                        logger.info(
+                            "meeting=%s media=client_audio_summary packets=%s bytes=%s peak=%s",
+                            meeting_id, audio_packets, audio_bytes, maximum_peak,
+                        )
+                        maximum_peak = 0
                     await live.send_realtime_input(audio=types.Blob(data=payload, mime_type="audio/pcm;rate=16000"))
                 elif channel == VIDEO_PACKET and payload:
                     await live.send_realtime_input(video=types.Blob(data=payload, mime_type="image/jpeg"))
@@ -291,7 +344,11 @@ async def _bridge(
                 continue
             text = message.get("text")
             if text:
-                event_type = json.loads(text).get("type")
+                payload = json.loads(text)
+                event_type = payload.get("type")
+                if event_type == "diagnostic":
+                    _record_bridge_diagnostic(meeting_id, "", "", "", payload)
+                    continue
                 if event_type == "participant_left":
                     logger.info("meeting=%s participant=left source=meet_ui", meeting_id)
                     continue
@@ -303,8 +360,12 @@ async def _bridge(
         transcript_ids: dict[str, str] = {}
         transcript_text: dict[str, str] = {"user": "", "assistant": ""}
         audio_sent = False
+        response_count = 0
+        output_audio_packets = 0
+        output_audio_bytes = 0
         while True:
             async for response in live.receive():
+                response_count += 1
                 resumption = response.session_resumption_update
                 if resumption and resumption.resumable and resumption.new_handle:
                     first_handle = not session_state.get("handle")
@@ -333,8 +394,11 @@ async def _bridge(
                         await websocket.send_json({"type": "tool_response", "id": call_id, "name": call.name, "result": result})
                 content = response.server_content
                 if not content:
+                    if response_count == 1 or response_count % 50 == 0:
+                        logger.info("meeting=%s gemini=response_summary responses=%s content=false", meeting_id, response_count)
                     continue
                 if content.interrupted:
+                    logger.info("meeting=%s gemini=interrupted", meeting_id)
                     await websocket.send_json({"type": "interrupted"})
                 for role, transcription in (("user", content.input_transcription), ("assistant", content.output_transcription)):
                     if not transcription or not transcription.text:
@@ -343,6 +407,10 @@ async def _bridge(
                         sequence += 1
                         transcript_ids[role] = f"meeting-{role}-{sequence}"
                     transcript_text[role] += transcription.text
+                    logger.info(
+                        "meeting=%s gemini=transcript role=%s chars=%s final=%s",
+                        meeting_id, role, len(transcript_text[role]), bool(transcription.finished),
+                    )
                     await websocket.send_json({"type": "transcript_update", "id": transcript_ids[role], "role": role, "sequence": sequence, "text": transcript_text[role], "final": bool(transcription.finished)})
                     if transcription.finished:
                         with SessionLocal() as session:
@@ -352,13 +420,21 @@ async def _bridge(
                 if content.model_turn:
                     for part in content.model_turn.parts or []:
                         if part.inline_data and part.inline_data.data:
+                            output_audio_packets += 1
+                            output_audio_bytes += len(part.inline_data.data)
                             if not audio_sent:
                                 audio_sent = True
                                 with SessionLocal() as session:
                                     record_meeting_diagnostic(session, meeting_id, "media.agent_audio_sent", {"bytes": len(part.inline_data.data)})
                                 logger.info("meeting=%s media=agent_audio_sent", meeting_id)
+                            if output_audio_packets == 1 or output_audio_packets % 50 == 0:
+                                logger.info(
+                                    "meeting=%s media=agent_audio_summary packets=%s bytes=%s",
+                                    meeting_id, output_audio_packets, output_audio_bytes,
+                                )
                             await websocket.send_bytes(bytes([AUDIO_PACKET]) + part.inline_data.data)
                 if content.turn_complete:
+                    logger.info("meeting=%s gemini=turn_complete responses=%s", meeting_id, response_count)
                     for role in ("user", "assistant"):
                         if transcript_text[role].strip():
                             with SessionLocal() as session:
@@ -381,3 +457,28 @@ async def _bridge(
     if errors_found:
         raise errors_found[0]
     return next((task.result() for task in done if not task.cancelled()), "disconnected")
+
+
+def _pcm_peak(payload: bytes) -> int:
+    return max((abs(int.from_bytes(payload[index:index + 2], "little", signed=True)) for index in range(0, len(payload) - 1, 2)), default=0)
+
+
+def _record_bridge_diagnostic(
+    meeting_id: str,
+    runtime_id: str,
+    bridge_id: str,
+    tab_id: str,
+    payload: dict[str, object],
+) -> None:
+    stage = str(payload.get("stage") or "unknown")[:128]
+    details = payload.get("details")
+    safe_details = details if isinstance(details, dict) else {}
+    diagnostic = {
+        "runtimeId": runtime_id,
+        "bridgeId": bridge_id,
+        "tabId": tab_id,
+        **{str(key)[:64]: value for key, value in list(safe_details.items())[:20]},
+    }
+    logger.info("meeting=%s bridge_stage=%s details=%s", meeting_id, stage, json.dumps(diagnostic, default=str, separators=(",", ":")))
+    with SessionLocal() as session:
+        record_meeting_diagnostic(session, meeting_id, f"bridge.{stage}", diagnostic)

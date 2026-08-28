@@ -249,7 +249,7 @@ def record_agent_tool(
     session.add(MeetingEvent(
         meeting_id=meeting_id,
         source="meet_agent",
-        external_id=call_id,
+        external_id=f"{meeting_id}:{call_id}",
         event_type=f"tool.{name}",
         payload=json.dumps({"arguments": arguments, "result": result}, default=str),
     ))

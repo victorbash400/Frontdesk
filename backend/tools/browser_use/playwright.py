@@ -50,9 +50,10 @@ async def connected_playwright_toolset() -> McpToolset:
         if result.isError:
             message = " ".join(getattr(item, "text", "") for item in result.content).strip()
             raise RuntimeError(message or "Chrome rejected the browser preflight command.")
-    except Exception:
+    except Exception as error:
         await toolset.close()
-        raise RuntimeError("Browser Use is not connected to the Front Desk extension.") from None
+        detail = str(error).strip() or type(error).__name__
+        raise RuntimeError(f"Browser Use connection failed: {detail}") from error
     if not tools:
         await toolset.close()
         raise RuntimeError("Browser Use connected without exposing browser tools.")
