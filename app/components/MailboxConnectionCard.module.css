@@ -1,0 +1,8 @@
+.card { display: grid; min-width: 300px; min-height: 44px; padding: 0 12px; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 9px; border: 1px solid #e3e3df; border-radius: 12px; background: #fff; }
+.card > svg { width: 15px; height: 15px; color: #555550; stroke-width: 1.6; }
+.card span { display: grid; min-width: 0; gap: 2px; }
+.card strong, .card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card strong { color: #383835; font-size: 10px; font-weight: 590; }
+.card small { color: #8c8c87; font-size: 9px; }
+.card button { padding: 0; border: 0; background: transparent; color: #777772; font-size: 9px; cursor: pointer; }
+@media (max-width: 760px) { .card { min-width: 0; } }

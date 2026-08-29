@@ -1,0 +1,7 @@
+.conversation { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
+.conversation > header { min-height: 64px; padding: 15px 20px; border-bottom: 1px solid #ededeb; }
+.conversation > header strong, .conversation > header small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation > header strong { color: #343431; font-size: 12px; font-weight: 590; }
+.conversation > header small { margin-top: 5px; color: #93938e; font-size: 9px; }
+.conversation > section { display: grid; padding: 20px; align-content: start; gap: 0; overflow-y: auto; background: #fff; overscroll-behavior: contain; }
+@media (max-width: 760px) { .conversation { display: none; } }

@@ -1,0 +1,10 @@
+.row { display: block; width: 100%; padding: 15px 18px; border: 0; border-bottom: 1px solid #f0f0ed; background: transparent; color: #30302e; text-align: left; cursor: pointer; }
+.row:hover { background: #fbfbfa; }
+.row[aria-current="true"] { background: #f7f7f5; box-shadow: inset 2px 0 #b7b7b1; }
+.row > span { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 10px; }
+.row strong { overflow: hidden; font-size: 11px; font-weight: 610; text-overflow: ellipsis; white-space: nowrap; }
+.row time { flex: none; color: #9b9b96; font-size: 9px; }
+.row b { display: block; margin-top: 5px; overflow: hidden; font-size: 11px; font-weight: 540; text-overflow: ellipsis; white-space: nowrap; }
+.row p { margin: 4px 0 0; overflow: hidden; color: #858580; font-size: 10px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.row small { display: block; margin-top: 8px; color: #a0a09b; font-size: 9px; }
+.row small[data-attention="true"] { color: #b23f39; }

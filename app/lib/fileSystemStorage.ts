@@ -141,6 +141,28 @@ export function saveFileSystem(accountId: string, data: FileSystemData) {
   window.localStorage.setItem(accountStorageKey(storageNamespace, accountId), JSON.stringify(data));
 }
 
+export async function loadServerFileSystem(): Promise<FileSystemData> {
+  const response = await fetch("/api/filesystem/snapshot", { cache: "no-store" });
+  const nodes = await response.json() as Array<{
+    id: string; parentId: string | null; name: string; kind: FileSystemData["nodes"][number]["kind"];
+    createdAt: string; updatedAt: string; shared: boolean; needsAttention: boolean;
+    trashedAt: string | null; content: string | null;
+  }> | { error?: string };
+  if (!response.ok || !Array.isArray(nodes)) throw new Error(!Array.isArray(nodes) && nodes.error || "Could not load the client folders.");
+  return { version: 1, nodes: nodes.map((node) => ({ ...node, content: node.content ?? undefined, tags: [], protected: node.kind === "profile" })) };
+}
+
+export function mergeFileSystems(local: FileSystemData, server: FileSystemData): FileSystemData {
+  const localById = new Map(local.nodes.map((node) => [node.id, node]));
+  const serverIds = new Set(server.nodes.map((node) => node.id));
+  const nodes: FileSystemData["nodes"] = server.nodes.map((node) => {
+    const saved = localById.get(node.id);
+    return { ...saved, ...node, tags: saved?.tags ?? [], protected: node.kind === "profile" };
+  });
+  nodes.push(...local.nodes.filter((node) => !serverIds.has(node.id)));
+  return { version: 1, nodes };
+}
+
 export async function syncFileSystem(data: FileSystemData): Promise<void> {
   const response = await fetch("/api/filesystem/sync", {
     body: JSON.stringify({

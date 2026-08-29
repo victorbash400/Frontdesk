@@ -1,0 +1,13 @@
+.form { display: grid; gap: 16px; padding: 22px; border: 1px solid #e3e3df; border-radius: 14px; background: #fff; }
+.form label { display: grid; gap: 7px; color: #565652; font-size: 11px; }
+.form input { height: 38px; padding: 0 11px; border: 1px solid #deded9; border-radius: 9px; background: #fff; color: #333330; outline: none; }
+.form input:focus { border-color: #9d9d96; }
+.password { position: relative; display: block; }
+.password input { width: 100%; padding-right: 38px; }
+.password button { position: absolute; top: 5px; right: 5px; display: grid; width: 28px; height: 28px; padding: 0; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #8a8a85; cursor: pointer; }
+.password button:hover { background: #f4f4f1; color: #555550; }
+.password button svg { width: 15px; height: 15px; stroke-width: 1.7; }
+.form p { margin: 0; color: #8c8c87; font-size: 10px; line-height: 1.5; }
+.form .error { color: #a43d38; }
+.form > button { width: max-content; height: 34px; padding: 0 13px; border: 0; border-radius: 9px; background: #343431; color: #fff; font-size: 10px; cursor: pointer; }
+.form > button:disabled { opacity: .5; cursor: default; }

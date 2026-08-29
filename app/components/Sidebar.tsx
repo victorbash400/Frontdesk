@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { BookOpenCheck, FileText, Folder, ListTodo, Mail, Phone, Plus, Puzzle, Trash2, type LucideIcon } from "lucide-react";
+import { BookOpenCheck, FileText, Folder, ListTodo, Mail, Plus, Puzzle, Trash2, type LucideIcon } from "lucide-react";
 
 import { locationLabels } from "../lib/fileSystemSelectors";
 import type { Destination, SmartLocation } from "../types/filesystem";
@@ -12,7 +12,6 @@ const clientItems: Array<{ location: SmartLocation; icon: LucideIcon }> = [
 
 const workspaceItems: Array<{ location: SmartLocation; icon: LucideIcon }> = [
   { location: "goals", icon: ListTodo },
-  { location: "calls", icon: Phone },
   { location: "emails", icon: Mail },
   { location: "documents", icon: FileText },
   { location: "plugins", icon: Puzzle },

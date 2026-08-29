@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { loadFileSystem, saveFileSystem, syncFileSystem } from "../lib/fileSystemStorage";
+import { loadFileSystem, loadServerFileSystem, mergeFileSystems, saveFileSystem, syncFileSystem } from "../lib/fileSystemStorage";
 import { hasSiblingName } from "../lib/fileSystemNames";
 import type { FileSystemData, FileSystemNode, NodeKind, TagName } from "../types/filesystem";
 
@@ -18,15 +18,32 @@ export function useFileSystem(accountId: string) {
       try {
         const stored = loadFileSystem(accountId);
         setData(stored);
-        void syncFileSystem(stored).catch((reason) => setError(messageFrom(reason, "Could not synchronize the client folders.")));
+        void syncFileSystem(stored)
+          .then(loadServerFileSystem)
+          .then((server) => {
+            const merged = mergeFileSystems(stored, server);
+            saveFileSystem(accountId, merged);
+            setData(merged);
+          })
+          .catch((reason) => setError(messageFrom(reason, "Could not synchronize the client folders.")));
       } catch (reason) {
         setError(messageFrom(reason, "Could not load the filesystem."));
       } finally {
         setLoaded(true);
       }
     });
+    const events = new EventSource("/api/events/stream");
+    events.onmessage = (message) => {
+      const event = JSON.parse(message.data) as { type?: string };
+      if (event.type !== "mailbox_changed") return;
+      void loadServerFileSystem().then((server) => setData((current) => {
+        const merged = mergeFileSystems(current, server);
+        saveFileSystem(accountId, merged);
+        return merged;
+      })).catch((reason) => setError(messageFrom(reason, "Could not refresh the client folders.")));
+    };
 
-    return () => window.cancelAnimationFrame(frame);
+    return () => { window.cancelAnimationFrame(frame); events.close(); };
   }, [accountId]);
 
   const commit = useCallback((update: (current: FileSystemData) => FileSystemData) => {

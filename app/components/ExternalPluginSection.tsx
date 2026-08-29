@@ -19,6 +19,7 @@ type ExternalPluginSectionProps = {
 
 export function ExternalPluginSection({ onConnect, onDisconnect, onPermissionChange, onRefresh, onRemove, plugin, state }: ExternalPluginSectionProps) {
   const connectionAvailable = state.connected || state.connection_supported;
+  const isManaged = state.connection_type === "managed";
   const overview = state.connected
     ? `${state.account_label || "Connected"}${state.tool_count ? ` · ${state.tool_count} tools` : ""}${plugin.id === "github" ? ` · ${state.repository_count || 0} repositories` : ""}`
     : "Not connected";
@@ -36,7 +37,7 @@ export function ExternalPluginSection({ onConnect, onDisconnect, onPermissionCha
         <section aria-label={`${plugin.name} connection settings`} className={styles.settings}>
           <header>
             <span><strong>Connection</strong><small>{state.connected ? state.account_label || `${plugin.name} is connected` : state.setup_message || `Connect ${plugin.name} to Front Desk`}</small></span>
-            <button disabled={!connectionAvailable} onClick={state.connected ? onDisconnect : onConnect} type="button">{state.connected ? "Disconnect" : "Connect"}</button>
+            {!isManaged ? <button disabled={!connectionAvailable} onClick={state.connected ? onDisconnect : onConnect} type="button">{state.connected ? "Disconnect" : "Connect"}</button> : null}
           </header>
           {state.connected ? <>
             <PluginFeaturePermissions connected onChange={onPermissionChange} permissions={state.permissions} plugin={plugin} />

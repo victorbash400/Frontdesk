@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Blocks, BookOpenText, Bot, Building2, CircleDot, FileText, FolderGit2, GitBranch, GitPullRequest, Hash, ListTodo, MessageCircle, MessageSquareText, PanelsTopLeft } from "lucide-react";
+import { Blocks, BookOpenText, Bot, Building2, CircleDot, FileText, FolderGit2, GitBranch, GitPullRequest, Hash, ListTodo, MessageCircle, MessageSquareText, PanelsTopLeft, ShoppingBasket } from "lucide-react";
 
 
 export type PluginGroup = "productivity" | "developer" | "communication" | "automation";
@@ -22,7 +22,7 @@ export type PluginState = {
   id: string;
   installed: boolean;
   connected: boolean;
-  connection_type: "google" | "mcp" | "extension";
+  connection_type: "google" | "mcp" | "managed" | "extension";
   connection_supported: boolean;
   setup_message?: string | null;
   account_label?: string | null;
@@ -59,6 +59,7 @@ export const pluginDirectory: PluginDefinition[] = [
     { id: "slack.channels", name: "Channels", description: "Search connected Slack channels", icon: Hash },
     { id: "slack.messages", name: "Messages", description: "Read and work with Slack messages", icon: MessageSquareText },
   ] },
+  { id: "aqualabs-store", name: "Aqualabs Store", description: "Resolve customer order, billing, and support issues", group: "productivity", color: "#2d6f66", icon: ShoppingBasket, logo: "/aqualabs-icon.png", permissions: ["Read customer, catalog, order, billing, and support history", "Create and correct orders and support cases", "Record every operational change in the store audit history"] },
   { id: "browser-use", name: "Browser Use", description: "Control Chrome through the Front Desk extension", group: "automation", color: "#30302e", icon: PanelsTopLeft, logo: "/browser-settings-svgrepo-com.svg", permissions: ["Use every normal Chrome tab and window", "Open, navigate, inspect, and close tabs", "Use Playwright browser, network, storage, download, and DevTools capabilities"] },
 ];
 

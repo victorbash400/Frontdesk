@@ -1,0 +1,12 @@
+.activity { min-width: 0; padding: 16px; overflow-y: auto; border-left: 1px solid #ededeb; background: #fff; }
+.activity header { display: flex; min-height: 24px; align-items: center; justify-content: space-between; gap: 12px; }
+.activity header strong { color: #3b3b38; font-size: 11px; font-weight: 590; }
+.activity header small { display: inline-flex; align-items: center; gap: 5px; color: #92928d; font-size: 9px; }
+.activity header svg { width: 11px; height: 11px; }
+.running svg { animation: spin 1s linear infinite; }
+.activity ol { display: grid; margin: 13px 0 0; padding: 0; list-style: none; gap: 12px; }
+.activity li { display: grid; grid-template-columns: 7px minmax(0, 1fr); align-items: start; gap: 8px; color: #696965; font-size: 10px; line-height: 1.45; }
+.activity li i { width: 5px; height: 5px; margin-top: 5px; border-radius: 50%; background: #c8c8c2; }
+.failure { display: flex; margin: 12px 0 0; gap: 7px; color: #a33c37; font-size: 10px; line-height: 1.45; }
+.failure svg { width: 13px; height: 13px; flex: 0 0 auto; }
+@keyframes spin { to { transform: rotate(360deg); } }

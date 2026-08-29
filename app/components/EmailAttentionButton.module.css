@@ -1,0 +1,4 @@
+.button { position: relative; display: grid; width: 28px; height: 28px; padding: 0; place-items: center; color: #777773; border: 0; background: transparent; cursor: pointer; }
+.button:hover { color: #30302e; }
+.button svg { width: 16px; height: 16px; }
+.button i { position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border: 1.5px solid #fff; border-radius: 50%; background: #c8443d; }

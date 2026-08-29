@@ -1,0 +1,4 @@
+.inbox { display: grid; min-height: 0; grid-template-columns: 280px minmax(0, 1fr) 230px; overflow: hidden; background: #fff; }
+.inbox[data-empty="true"] { grid-template-columns: 1fr; }
+@media (max-width: 900px) { .inbox { grid-template-columns: 260px minmax(0, 1fr); } .inbox > aside { display: none; } }
+@media (max-width: 760px) { .inbox { grid-template-columns: 1fr; } }

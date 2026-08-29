@@ -49,7 +49,7 @@ export function PluginStore({ accountId }: { accountId: string }) {
         {installed.map(({ plugin, state }) => <ExternalPluginSection
             key={plugin.id}
             onConnect={() => void directory.connect(plugin.id).catch((reason) => directory.setError(reason instanceof Error ? reason.message : `Could not connect ${plugin.name}`))}
-            onDisconnect={() => void (state.connection_type === "extension" ? directory.remove(plugin.id) : directory.disconnect(plugin.id)).catch((reason) => directory.setError(reason instanceof Error ? reason.message : `Could not disconnect ${plugin.name}`))}
+            onDisconnect={() => void (state.connection_type === "extension" || state.connection_type === "managed" ? directory.remove(plugin.id) : directory.disconnect(plugin.id)).catch((reason) => directory.setError(reason instanceof Error ? reason.message : `Could not disconnect ${plugin.name}`))}
             onPermissionChange={(permissionId, enabled) => void directory.setPermission(plugin.id, permissionId, enabled).catch((reason) => directory.setError(reason instanceof Error ? reason.message : `Could not update ${plugin.name}`))}
             onRefresh={() => void directory.refresh()}
             onRemove={() => void directory.remove(plugin.id).catch((reason) => directory.setError(reason instanceof Error ? reason.message : `Could not remove ${plugin.name}`))}

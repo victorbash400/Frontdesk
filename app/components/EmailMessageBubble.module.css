@@ -1,0 +1,7 @@
+.message { width: 100%; padding: 0 0 20px; }
+.message + .message { padding-top: 20px; border-top: 1px solid #f0f0ed; }
+.message header { display: flex; margin-bottom: 6px; align-items: baseline; justify-content: space-between; gap: 12px; }
+.message strong { color: #555550; font-size: 10px; font-weight: 600; }
+.message time { color: #a1a19c; font-size: 9px; }
+.message p { max-width: 640px; margin: 0; color: #454541; font-size: 11px; line-height: 1.65; white-space: pre-wrap; }
+.message[data-direction="outbound"] strong { color: #777772; }

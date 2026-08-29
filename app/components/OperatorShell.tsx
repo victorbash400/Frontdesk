@@ -19,6 +19,7 @@ import { Sidebar } from "./Sidebar";
 import { SkillsLibrary } from "./SkillsLibrary";
 import { TasksWorkspace } from "./TasksWorkspace";
 import { GoalsWorkspace } from "./GoalsWorkspace";
+import { EmailsWorkspace } from "./EmailsWorkspace";
 import { Toolbar } from "./Toolbar";
 import styles from "./OperatorShell.module.css";
 
@@ -57,7 +58,8 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
   const canCreate = navigation.destination.type === "folder" || navigation.destination.type === "location" && navigation.destination.location === "clients";
   const taskView = navigation.destination.type === "location" && navigation.destination.location === "tasks";
   const goalView = navigation.destination.type === "location" && navigation.destination.location === "goals";
-  const utilityView = Boolean(openFile) || taskView || goalView || navigation.destination.type === "location" && (navigation.destination.location === "plugins" || navigation.destination.location === "skills");
+  const emailView = navigation.destination.type === "location" && navigation.destination.location === "emails";
+  const utilityView = Boolean(openFile) || taskView || goalView || emailView || navigation.destination.type === "location" && (navigation.destination.location === "plugins" || navigation.destination.location === "skills");
   const explorerKey = navigation.destination.type === "folder" ? `folder-${navigation.destination.id}` : `location-${navigation.destination.location}`;
 
   function navigate(destination: Parameters<typeof navigation.navigate>[0]) {
@@ -138,6 +140,7 @@ export function OperatorShell({ account }: { account: OperatorAccount }) {
             {navigation.destination.type === "location" && navigation.destination.location === "skills" ? <SkillsLibrary accountId={account.id} /> : null}
             {taskView ? <TasksWorkspace accountId={account.id} clients={clients} /> : null}
             {goalView ? <GoalsWorkspace accountId={account.id} clients={clients} /> : null}
+            {emailView ? <EmailsWorkspace /> : null}
             {openFile?.kind === "profile" && client ? <ClientProfileEditor clientName={client.name} key={`${openFile.id}-${openFile.updatedAt}`} onBack={() => setOpenFileId(undefined)} onSave={(content) => fileSystem.updateNode(openFile.id, { content })} profile={openFile} /> : null}
             {openFile?.kind === "document" ? <MarkdownDocumentEditor document={openFile} key={`${openFile.id}-${openFile.updatedAt}`} onBack={() => setOpenFileId(undefined)} onSave={(content) => fileSystem.updateNode(openFile.id, { content })} /> : null}
             {!utilityView ? <ExplorerContent allNodes={fileSystem.data.nodes} destination={navigation.destination} key={explorerKey} nodes={visibleNodes} onContextMenu={showContextMenu} onOpen={openNode} onSelect={(node) => setSelectedId(node.id)} onRename={(node) => setDialog({ mode: "rename", node })} onTrashToggle={(node) => { fileSystem.setTrashed(node.id, !node.trashedAt); setSelectedId(undefined); }} selectedNode={selectedNode} viewMode={viewMode} /> : null}
