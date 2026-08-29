@@ -99,6 +99,11 @@ class SkillUpdate(BaseModel):
     required_plugin_ids: list[str] = Field(default_factory=list, max_length=50)
 
 
+class TitanMailboxConnect(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=1, max_length=1024)
+
+
 class PermissionUpdate(BaseModel):
     enabled: bool
 

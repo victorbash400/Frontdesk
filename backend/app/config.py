@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     slack_client_id: str = ""
     slack_client_secret: str = ""
+    aqualabs_store_mcp_url: str = ""
+    aqualabs_store_mcp_token: str = ""
     gcs_bucket: str = ""
     cors_origins: str = "http://localhost:3000"
     internal_secret: str = "front-desk-local-development-secret"

@@ -73,6 +73,22 @@ def initialize_database() -> None:
             for column, definition in additions.items():
                 if column not in assignment_columns:
                     connection.execute(text(f"ALTER TABLE goal_assignments ADD COLUMN {column} {definition}"))
+    if "mail_messages" in inspector.get_table_names():
+        message_columns = {column["name"] for column in inspector.get_columns("mail_messages")}
+        additions = {
+            "client_id": "VARCHAR(36)",
+            "conversation_id": "VARCHAR(36)",
+            "assignment_id": "VARCHAR(36)",
+            "agent_status": "VARCHAR(24) NOT NULL DEFAULT 'completed'",
+            "agent_action": "VARCHAR(32) NOT NULL DEFAULT ''",
+            "agent_summary": "TEXT NOT NULL DEFAULT ''",
+            "attention_required": "BOOLEAN NOT NULL DEFAULT FALSE",
+            "agent_failure": "TEXT NOT NULL DEFAULT ''",
+        }
+        with engine.begin() as connection:
+            for column, definition in additions.items():
+                if column not in message_columns:
+                    connection.execute(text(f"ALTER TABLE mail_messages ADD COLUMN {column} {definition}"))
     Base.metadata.create_all(bind=engine)
     if engine.dialect.name == "sqlite":
         with engine.begin() as connection:

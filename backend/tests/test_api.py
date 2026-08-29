@@ -20,12 +20,13 @@ from app.database import SessionLocal
 from app.event_stream import AccountEventBroker
 from app.goal_tasks import GoalTaskManager
 from app.goals import create_notification
-from app.models import GitHubRepositoryAccess, Goal, GoalAssignment, GoalAutomation, GoalBrowserPreview, OAuthConnection, PluginInstallation
+from app.models import GitHubRepositoryAccess, Goal, GoalAssignment, GoalAutomation, GoalBrowserPreview, MailboxConnection, MailMessage, OAuthConnection, PluginInstallation
 from app.google_oauth import connection_status
 from app.skills import list_skills
 from agents.goal_planner import GoalPlan, GoalTaskOperation
 from agents.goals_chat_agent import create_goals_chat_app
 from app import google_oauth
+from app import mailboxes as mailbox_service
 from app.voice import VOICE_MODEL, VOICE_TOOLS, verify_voice_ticket
 from tools import workspace
 from tools.browser_use import playwright as playwright_browser
@@ -166,6 +167,63 @@ def test_workspace_permissions_are_account_scoped() -> None:
         second = client.get("/api/plugins/google", headers=second_headers)
         second_permissions = {permission["id"]: permission["enabled"] for permission in second.json()["permissions"]}
         assert second_permissions["workspace.gmail"] is True
+
+
+def test_titan_connection_requires_idle_and_baselines_new_mail() -> None:
+    class Client:
+        capabilities: tuple[str, ...] = ()
+        def capability(self) -> tuple[str, list[bytes | str]]: return "OK", [b"IMAP4REV1 AUTH=PLAIN", "IDLE"]
+        def select(self, *_: object, **__: object) -> tuple[str, list[bytes]]: return "OK", [b"4"]
+        def response(self, name: str) -> tuple[str, list[bytes]]:
+            return "OK", [b"456"] if name == "UIDVALIDITY" else [b"19"]
+        def logout(self) -> None: pass
+
+    with TestClient(app) as client:
+        account = create_account(client, "titan-connect@example.com", "Titan Connect")
+        imap_client = Client()
+        with patch.object(mailbox_service, "_login", return_value=imap_client):
+            with SessionLocal() as session:
+                status = mailbox_service.connect_titan_mailbox(session, account["id"], "support@aqualabs.tech", "secret")
+        assert status["email"] == "support@aqualabs.tech"
+        assert status["lastUid"] == 18
+        assert "IDLE" in imap_client.capabilities
+        with SessionLocal() as session:
+            connection = session.query(MailboxConnection).filter_by(account_id=account["id"]).one()
+            assert connection.uid_validity == "456"
+            session.delete(connection)
+            session.commit()
+
+    assert mailbox_service._imap_event_name("EXISTS") == "EXISTS"
+    assert mailbox_service._imap_event_name(b"EXISTS") == "EXISTS"
+
+
+def test_titan_inbound_message_is_queued_for_email_agent_without_creating_goal() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "titan-events@example.com", "Titan Events")
+        headers = account_headers(account["id"])
+        assert client.get("/api/skills", headers=headers).status_code == 200
+        with SessionLocal() as session:
+            connection = MailboxConnection(account_id=account["id"], provider="titan", email="support@aqualabs.tech", incoming_host="imap.titan.email", incoming_port=993, outgoing_host="smtp.titan.email", outgoing_port=465, encrypted_password="encrypted", uid_validity="1", last_uid=0, state="connected")
+            session.add(connection)
+            session.commit()
+            mailbox_id = connection.id
+
+        first = mailbox_service.IncomingMessage(1, "<complaint@example.com>", "", "", "Potato Customer <customer@example.com>", "support@aqualabs.tech", "Order marked unpaid", "I paid for AQ-1042. Please fix it.", datetime.now(timezone.utc))
+        created = mailbox_service._record_incoming(mailbox_id, first)
+        assert created
+        assert mailbox_service._record_incoming(mailbox_id, first) is None
+
+        with SessionLocal() as session:
+            assert session.query(Goal).filter_by(account_id=account["id"]).count() == 0
+            inbound = session.query(MailMessage).filter_by(message_id=first.message_id).one()
+            assert inbound.agent_status == "queued"
+            assert inbound.goal_id is None
+        threads = client.get("/api/mailbox/threads", headers=headers)
+        assert threads.status_code == 200
+        assert len(threads.json()) == 1
+        assert threads.json()[0]["subject"] == "Order marked unpaid"
+        assert threads.json()[0]["clientName"] == "Potato Customer"
+        assert threads.json()[0]["agentStatus"] == "queued"
 
 
 def test_workspace_avatar_url_is_versioned_by_connected_identity() -> None:
@@ -315,6 +373,28 @@ def test_browser_use_installs_as_local_extension() -> None:
         assert browser["connected"] is False
 
 
+def test_aqualabs_store_installs_as_managed_plugin(monkeypatch) -> None:
+    monkeypatch.setenv("FRONT_DESK_AQUALABS_STORE_MCP_URL", "https://aqualabs-store.vercel.app/api/mcp")
+    monkeypatch.setenv("FRONT_DESK_AQUALABS_STORE_MCP_TOKEN", "test-token")
+    from app.config import get_settings
+    get_settings.cache_clear()
+    try:
+        with TestClient(app) as client:
+            account = create_account(client, "store-plugin@example.com", "Store Plugin")
+            headers = account_headers(account["id"])
+
+            response = client.post("/api/plugins/aqualabs-store", headers=headers)
+            assert response.status_code == 201
+            store = {plugin["id"]: plugin for plugin in response.json()["plugins"]}["aqualabs-store"]
+            assert store["installed"] is True
+            assert store["connected"] is True
+            assert store["connection_type"] == "managed"
+            assert store["account_label"] == "Aqualabs Store"
+            assert store["tool_count"] == 11
+    finally:
+        get_settings.cache_clear()
+
+
 def test_goal_board_and_scheduled_run_dispatch() -> None:
     with TestClient(app) as client:
         account = create_account(client, "goals@example.com", "Goals")
@@ -392,6 +472,36 @@ def test_goal_tool_preflight_failure_never_creates_gemini_runner() -> None:
         persisted_goal = session.get(Goal, goal["id"])
         assert persisted_goal and persisted_goal.run_state == "failed"
         assert persisted_goal.current_step == "Chrome extension is not connected."
+
+
+def test_goal_preflight_attaches_configured_aqualabs_store_toolset() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "store-worker@example.com", "Store Worker")
+        goal_payload = client.post("/api/goals", headers=account_headers(account["id"]), json={
+            "client_id": "client-store-worker",
+            "text": "Check this customer's order history.",
+            "skill_ids": [],
+            "plugin_ids": ["aqualabs-store"],
+        }).json()
+
+    with SessionLocal() as session:
+        session.add(PluginInstallation(account_id=account["id"], plugin_id="aqualabs-store"))
+        session.commit()
+        goal = session.get(Goal, goal_payload["id"])
+        session.expunge(goal)
+    assignment_id = create_test_assignment(goal_payload["id"], goal_payload["text"])
+    with SessionLocal() as session:
+        assignment = session.get(GoalAssignment, assignment_id)
+        session.expunge(assignment)
+
+    store_toolset = MagicMock()
+    manager = GoalTaskManager()
+    with patch("app.goal_tasks.configured_aqualabs_store_toolset", new=AsyncMock(return_value=store_toolset)) as configured:
+        tools, toolsets = asyncio.run(manager._preflight(account["id"], goal, assignment))
+
+    configured.assert_awaited_once_with()
+    assert store_toolset in tools
+    assert toolsets == [store_toolset]
 
 
 def test_answering_a_blocking_question_resumes_with_the_answer() -> None:

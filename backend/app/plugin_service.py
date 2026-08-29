@@ -6,8 +6,10 @@ from .models import GitHubRepositoryAccess, OAuthConnection, PluginConnection, P
 
 EXTERNAL_PLUGIN_IDS = ("notion", "linear", "atlassian", "vercel", "github", "slack")
 EXTENSION_PLUGIN_IDS = ("browser-use",)
-PLUGIN_IDS = ("google-workspace", *EXTERNAL_PLUGIN_IDS, *EXTENSION_PLUGIN_IDS)
+MANAGED_PLUGIN_IDS = ("aqualabs-store",)
+PLUGIN_IDS = ("google-workspace", *EXTERNAL_PLUGIN_IDS, *MANAGED_PLUGIN_IDS, *EXTENSION_PLUGIN_IDS)
 BROWSER_TOOL_COUNT = 24
+MANAGED_TOOL_COUNTS = {"aqualabs-store": 11}
 PLUGIN_FEATURES = {
     "github": (
         ("github.repositories", "Repositories", "Read and work with selected repositories"),
@@ -103,16 +105,17 @@ def _plugin_state(
     supported, setup_message = connection_support.get(plugin_id, (False, None))
     is_workspace = plugin_id == "google-workspace"
     is_extension = plugin_id in EXTENSION_PLUGIN_IDS
-    connected = installed if is_extension else google_connection is not None if is_workspace else connection is not None
+    is_managed = plugin_id in MANAGED_PLUGIN_IDS
+    connected = installed and supported if is_managed else installed if is_extension else google_connection is not None if is_workspace else connection is not None
     return {
         "id": plugin_id,
         "installed": installed,
         "connected": connected,
-        "connection_type": "google" if is_workspace else "extension" if is_extension else "mcp",
+        "connection_type": "google" if is_workspace else "extension" if is_extension else "managed" if is_managed else "mcp",
         "connection_supported": True if is_workspace or is_extension else supported,
         "setup_message": None if is_workspace else setup_message,
-        "account_label": "Local Chrome" if is_extension and installed else google_connection.email if is_workspace and google_connection else connection.account_label if connection else None,
-        "tool_count": BROWSER_TOOL_COUNT if is_extension and installed else connection.tool_count if connection else 0,
+        "account_label": "Aqualabs Store" if is_managed and connected else "Local Chrome" if is_extension and installed else google_connection.email if is_workspace and google_connection else connection.account_label if connection else None,
+        "tool_count": MANAGED_TOOL_COUNTS.get(plugin_id, 0) if is_managed and connected else BROWSER_TOOL_COUNT if is_extension and installed else connection.tool_count if connection else 0,
         "repository_count": github_repository_count if plugin_id == "github" else None,
         "permissions": [
             {"id": permission_id, "name": name, "description": description, "enabled": permission_rows.get(permission_id, True)}

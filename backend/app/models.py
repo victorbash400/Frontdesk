@@ -171,6 +171,96 @@ class PluginPermission(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
+class MailboxConnection(Base):
+    __tablename__ = "mailbox_connections"
+    __table_args__ = (UniqueConstraint("account_id", "provider"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    incoming_host: Mapped[str] = mapped_column(String(255), nullable=False)
+    incoming_port: Mapped[int] = mapped_column(Integer, nullable=False)
+    outgoing_host: Mapped[str] = mapped_column(String(255), nullable=False)
+    outgoing_port: Mapped[int] = mapped_column(Integer, nullable=False)
+    encrypted_password: Mapped[str] = mapped_column(Text, nullable=False)
+    uid_validity: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    last_uid: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    state: Mapped[str] = mapped_column(String(24), default="disconnected", nullable=False)
+    failure: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class ClientEmailIdentity(Base):
+    __tablename__ = "client_email_identities"
+    __table_args__ = (UniqueConstraint("workspace_id", "email"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"), index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class EmailConversation(Base):
+    __tablename__ = "email_conversations"
+    __table_args__ = (UniqueConstraint("mailbox_id", "provider_thread_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("mailbox_connections.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("nodes.id", ondelete="SET NULL"), index=True)
+    goal_id: Mapped[str | None] = mapped_column(ForeignKey("goals.id", ondelete="SET NULL"), index=True)
+    assignment_id: Mapped[str | None] = mapped_column(ForeignKey("goal_assignments.id", ondelete="SET NULL"), index=True)
+    provider_thread_id: Mapped[str] = mapped_column(String(998), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="open", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class MailMessage(Base):
+    __tablename__ = "mail_messages"
+    __table_args__ = (
+        UniqueConstraint("mailbox_id", "uid"),
+        UniqueConstraint("mailbox_id", "message_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("mailbox_connections.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("nodes.id", ondelete="SET NULL"), index=True)
+    conversation_id: Mapped[str | None] = mapped_column(ForeignKey("email_conversations.id", ondelete="SET NULL"), index=True)
+    goal_id: Mapped[str | None] = mapped_column(ForeignKey("goals.id", ondelete="SET NULL"), index=True)
+    assignment_id: Mapped[str | None] = mapped_column(ForeignKey("goal_assignments.id", ondelete="SET NULL"), index=True)
+    uid: Mapped[int | None] = mapped_column(BigInteger)
+    direction: Mapped[str] = mapped_column(String(12), nullable=False)
+    message_id: Mapped[str] = mapped_column(String(998), nullable=False)
+    in_reply_to: Mapped[str] = mapped_column(String(998), default="", nullable=False)
+    references: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    sender: Mapped[str] = mapped_column(String(998), nullable=False)
+    recipients: Mapped[str] = mapped_column(Text, nullable=False)
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    agent_status: Mapped[str] = mapped_column(String(24), default="queued", nullable=False, index=True)
+    agent_action: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    agent_summary: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    attention_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    agent_failure: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class EmailAgentActivity(Base):
+    __tablename__ = "email_agent_activity"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("mailbox_connections.id", ondelete="CASCADE"), index=True)
+    message_id: Mapped[str] = mapped_column(ForeignKey("mail_messages.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("nodes.id", ondelete="SET NULL"), index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
 class Skill(Base):
     __tablename__ = "skills"
     __table_args__ = (UniqueConstraint("account_id", "slug"),)

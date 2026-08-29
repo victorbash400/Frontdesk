@@ -21,8 +21,10 @@ from app.goal_tool_ui import describe_goal_tool, goal_requires_browser
 from app.goals import create_notification, require_goal
 from app.models import Goal, GoalActivity, GoalAssignment, GoalBrowserPreview, GoalTaskUpdate, OAuthConnection, PluginInstallation, Skill
 from app.skills import list_skills
+from app.mailboxes import titan_tools
 from agents.goal_planner import create_goal_planner_runner, plan_goal
 from tools.browser_use import capture_browser_preview, connected_playwright_toolset
+from tools.aqualabs_store import configured_aqualabs_store_toolset
 from tools.external_plugins import connected_external_plugin_toolset
 from tools.goal_control import ask_goal_question, complete_goal, update_goal_progress
 from tools.tool_failures import begin_single_tool, finish_single_tool, stop_on_tool_error
@@ -376,7 +378,7 @@ class GoalTaskManager:
         missing = [plugin_id for plugin_id in plugin_ids if plugin_id not in installed]
         if missing:
             raise RuntimeError(f"Selected plugins are not installed: {', '.join(missing)}")
-        tools: list[Any] = [update_goal_progress, ask_goal_question, complete_goal]
+        tools: list[Any] = [update_goal_progress, ask_goal_question, complete_goal, *titan_tools(account_id)]
         toolsets: list[Any] = []
         for plugin_id in plugin_ids:
             if plugin_id == "browser-use":
@@ -394,6 +396,10 @@ class GoalTaskManager:
                     raise RuntimeError("Google Workspace has no enabled tools.")
                 tools.extend(workspace)
                 tools.append(create_client_meeting)
+            elif plugin_id == "aqualabs-store":
+                store = await configured_aqualabs_store_toolset()
+                toolsets.append(store)
+                tools.append(store)
             else:
                 external = await connected_external_plugin_toolset(account_id, plugin_id)
                 toolsets.append(external)

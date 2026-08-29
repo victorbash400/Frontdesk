@@ -27,6 +27,28 @@ def search_nodes(session: Session, account_id: str, query: str) -> list[Node]:
     return list(session.scalars(statement))
 
 
+def filesystem_snapshot(session: Session, account_id: str) -> list[dict[str, object]]:
+    workspace = require_workspace(session, account_id)
+    rows = session.execute(
+        select(Node, DocumentContent)
+        .outerjoin(DocumentContent, DocumentContent.node_id == Node.id)
+        .where(Node.workspace_id == workspace.id)
+        .order_by(Node.created_at)
+    ).all()
+    return [{
+        "id": node.id,
+        "parentId": node.parent_id,
+        "name": node.name,
+        "kind": node.kind,
+        "createdAt": node.created_at,
+        "updatedAt": node.updated_at,
+        "shared": node.shared,
+        "needsAttention": node.needs_attention,
+        "trashedAt": node.trashed_at,
+        "content": content.content if content else None,
+    } for node, content in rows]
+
+
 def create_node(session: Session, account_id: str, body: NodeCreate) -> Node:
     workspace = require_workspace(session, account_id)
     if body.parent_id:

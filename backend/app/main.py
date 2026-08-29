@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+import asyncio
 import html
 import json
+import logging
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket
@@ -15,6 +17,7 @@ from .chat_stream import stream_agent_events
 from .config import get_settings
 from .database import SessionLocal, get_session, initialize_database
 from .event_stream import account_events
+from .email_agent import email_agent
 from .goal_tasks import goal_tasks
 from .goals_chat_stream import stream_goals_chat
 from .google_oauth import begin_connection, connection_status, disconnect, finish_connection, profile_photo, set_workspace_permission
@@ -22,13 +25,17 @@ from .goals import answer_notification, claim_due_automations, create_automation
 from .github_repositories import repository_access, set_repository_access
 from .mcp_oauth import begin_connection as begin_mcp_connection
 from .mcp_oauth import connection_support, disconnect as disconnect_mcp, finish_connection as finish_mcp_connection
-from .models import Goal, GoalAssignment, GoalBrowserPreview
+from .mailboxes import connect_titan_mailbox, disconnect_mailbox, list_mailbox_threads, mailbox_status, mailboxes
+from .models import Goal, GoalAssignment, GoalBrowserPreview, MailboxConnection
 from .plugin_service import install_plugin, plugin_snapshot, set_plugin_permission, uninstall_plugin
-from .repository import create_node, list_nodes, search_nodes, set_trashed, sync_nodes, update_node
-from .schemas import AccountCreate, AccountCredentials, AccountRead, AutomationCreate, ChatRequest, FileSystemSync, GitHubRepositoryUpdate, GoalCreate, GoalsChatRequest, GoalUpdate, HealthRead, NodeCreate, NodeRead, NodeUpdate, NotificationAnswer, PermissionUpdate, SkillCreate, SkillUpdate, VoiceTicketRequest
+from .repository import create_node, filesystem_snapshot, list_nodes, search_nodes, set_trashed, sync_nodes, update_node
+from .schemas import AccountCreate, AccountCredentials, AccountRead, AutomationCreate, ChatRequest, FileSystemSync, GitHubRepositoryUpdate, GoalCreate, GoalsChatRequest, GoalUpdate, HealthRead, NodeCreate, NodeRead, NodeUpdate, NotificationAnswer, PermissionUpdate, SkillCreate, SkillUpdate, TitanMailboxConnect, VoiceTicketRequest
 from .skills import create_skill, delete_skill, list_skills, update_skill
 from .voice import create_voice_ticket, run_voice_session
 from meetings.routes import router as meetings_router
+
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -37,7 +44,13 @@ async def lifespan(_: FastAPI):
     with SessionLocal() as session:
         ensure_demo_account(session)
     await goal_tasks.recover()
-    yield
+    await email_agent.recover()
+    await mailboxes.recover()
+    try:
+        yield
+    finally:
+        await mailboxes.close()
+        await email_agent.close()
 
 
 app = FastAPI(title="Front Desk API", version="0.1.0", lifespan=lifespan)
@@ -105,6 +118,38 @@ async def voice_socket(websocket: WebSocket, session_id: str, ticket: str, voice
 @app.get("/api/goals")
 def get_goals(client_id: str | None = None, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> list[dict[str, object]]:
     return list_goals(session, account_id, client_id)
+
+
+@app.get("/api/mailbox")
+def get_mailbox(account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    return mailbox_status(session, account_id)
+
+
+@app.get("/api/mailbox/threads")
+def get_mailbox_threads(account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> list[dict[str, object]]:
+    return list_mailbox_threads(session, account_id)
+
+
+@app.post("/api/mailbox/titan/connect")
+async def post_titan_mailbox(body: TitanMailboxConnect, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
+    try:
+        snapshot = await asyncio.to_thread(connect_titan_mailbox, session, account_id, body.email, body.password)
+    except RuntimeError as error:
+        logger.warning("mailbox=titan account=%s connection=rejected detail=%s", account_id, error)
+        raise HTTPException(400, str(error)) from error
+    connection = session.scalar(select(MailboxConnection).where(MailboxConnection.account_id == account_id, MailboxConnection.provider == "titan"))
+    if connection:
+        await mailboxes.start(connection.id)
+    return snapshot
+
+
+@app.delete("/api/mailbox")
+async def remove_mailbox(account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, bool]:
+    connection = session.scalar(select(MailboxConnection).where(MailboxConnection.account_id == account_id, MailboxConnection.provider == "titan"))
+    if connection:
+        await mailboxes.stop(connection.id)
+    disconnect_mailbox(session, account_id)
+    return {"deleted": True}
 
 
 @app.get("/api/workspace/previews/{file_id}")
@@ -384,6 +429,11 @@ async def mcp_callback(state: str, code: str | None = None, error: str | None = 
 @app.get("/api/nodes", response_model=list[NodeRead])
 def get_nodes(parent_id: str | None = None, include_trashed: bool = False, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> list[NodeRead]:
     return list_nodes(session, account_id, parent_id, include_trashed)
+
+
+@app.get("/api/filesystem/snapshot")
+def get_filesystem_snapshot(account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> list[dict[str, object]]:
+    return filesystem_snapshot(session, account_id)
 
 
 @app.get("/api/search", response_model=list[NodeRead])

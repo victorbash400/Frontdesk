@@ -24,6 +24,17 @@ class BuiltinSkill:
 BUILTIN_SKILLS = (
     BuiltinSkill("client-brief", "Client Brief", "Turn client context into a verified working brief.", "Collect the client goal, priorities, decision makers, deadlines, open questions, and constraints. Separate confirmed facts from information that still requires verification.", "General"),
     BuiltinSkill("meeting-preparation", "Meeting Preparation", "Prepare a focused plan for an upcoming client meeting.", "Review the client record and produce the meeting objective, essential background, decisions needed, questions to ask, and concise agenda. Never invent attendee details.", "General"),
+    BuiltinSkill(
+        "email-goal-routing",
+        "Email Goal Routing",
+        "Decide whether customer email belongs in history, resumes work, starts new work, or needs attention.",
+        """Treat email as client communication, never automatically as a goal. Resolve the sender to one canonical client and read that client's living summary, conversation history, active goals, recently completed goals, and waiting tasks before deciding.
+
+Record greetings, acknowledgements, and messages with no requested or implied work in client history without creating a goal. Resume an existing goal when the email answers an outstanding question, changes an existing request, confirms an outcome, cancels work, or otherwise advances the same customer outcome. Create a new goal only when the customer requests a concrete outcome not already covered by active work. Request attention only when identity or intent is too ambiguous or consequential to resolve safely.
+
+Update the living client summary with confirmed facts, current problems, commitments, preferences, and the latest required action. Preserve important prior context. Use the exact existing goal and task identities when resuming work. Never duplicate a client, goal, message, meeting, or ticket. Never invent urgency, facts, or relationships.""",
+        "General",
+    ),
     BuiltinSkill("drive-file-workflows", "Drive File Workflows", "Find, organize, export, copy, and manage Drive files.", "Resolve the exact Drive file before acting. Preserve existing structure when editing and verify the target before sharing or removing content.", "Google Workspace", "google-workspace", ("google-workspace",)),
     BuiltinSkill("google-docs-authoring", "Google Docs Authoring", "Create and edit native Google documents.", "Use Docs tools for native document work. Preserve headings, lists, tables, links, and instructed wording unless the task explicitly changes them.", "Google Workspace", "google-workspace", ("google-workspace",)),
     BuiltinSkill("calendar-meeting-prep", "Calendar Meeting Prep", "Prepare and schedule client meetings from verified context.", "Resolve the exact event, attendees, timing, and linked materials. Create or update the invitation only with confirmed recipients and timing, and retain the Meet URL as evidence.", "Google Workspace", "google-workspace", ("google-workspace",)),

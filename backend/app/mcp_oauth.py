@@ -121,6 +121,14 @@ def connection_support() -> dict[str, tuple[bool, str | None]]:
         if provider.client_setting:
             configured = bool(getattr(settings, provider.client_setting) and getattr(settings, provider.secret_setting or ""))
         result[plugin_id] = (configured, None if configured else provider.setup_message)
+    store_configured = bool(
+        getattr(settings, "aqualabs_store_mcp_url", "")
+        and getattr(settings, "aqualabs_store_mcp_token", "")
+    )
+    result["aqualabs-store"] = (
+        store_configured,
+        None if store_configured else "Configure the Aqualabs Store MCP URL and token on the Front Desk backend.",
+    )
     return result
 
 
