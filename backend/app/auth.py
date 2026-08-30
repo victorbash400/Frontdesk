@@ -14,7 +14,7 @@ from .models import Account
 def require_account_id(
     account_id: Annotated[str | None, Header(alias="X-Front-Desk-Account")] = None,
     internal_secret: Annotated[str | None, Header(alias="X-Front-Desk-Internal-Secret")] = None,
-    session: Session = Depends(get_session),
+    session: Session = Depends(get_session, scope="function"),
 ) -> str:
     expected_secret = get_settings().internal_secret
     if not account_id or not internal_secret or not hmac.compare_digest(internal_secret, expected_secret):
