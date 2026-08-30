@@ -1,5 +1,3 @@
-# Agent Engine unpickles classes created by this exact tested SDK set. Updating
-# either side independently can change private model fields and break startup.
 google-adk==2.7.1
 google-cloud-aiplatform[agent_engines,adk]==1.165.1
 google-genai==2.19.0
