@@ -1,8 +1,7 @@
-import type { GoalLiveUpdate, OperatorGoal } from "../types/goal";
-import { GoalWorkPreview } from "./GoalWorkPreview";
+import type { OperatorGoal } from "../types/goal";
 import styles from "./GoalPreviewPane.module.css";
 
-export function GoalPreviewPane({ goal, liveUpdate }: { goal?: OperatorGoal; liveUpdate?: GoalLiveUpdate }) {
+export function GoalPreviewPane({ goal }: { goal?: OperatorGoal }) {
   const task = goal?.assignments.find((item) => ["running", "blocked"].includes(item.status) && item.previewTarget) ?? goal?.assignments.find((item) => item.previewTarget);
   if (task?.previewTarget) {
     const target = task.previewTarget;
@@ -15,5 +14,5 @@ export function GoalPreviewPane({ goal, liveUpdate }: { goal?: OperatorGoal; liv
       <img alt={`Preview of ${label}`} src={source} />
     </aside>;
   }
-  return liveUpdate?.tool?.status === "running" ? <aside className={styles.preview}><GoalWorkPreview activity={liveUpdate.tool} /></aside> : null;
+  return null;
 }

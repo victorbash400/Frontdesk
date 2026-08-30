@@ -9,6 +9,7 @@ export function useGoals() {
   const [goals, setGoals] = useState<OperatorGoal[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string>();
+  const [runtimeOnline, setRuntimeOnline] = useState(false);
   const [liveUpdates, setLiveUpdates] = useState<Record<string, GoalLiveUpdate>>({});
 
   const refresh = useCallback(async () => {
@@ -16,7 +17,13 @@ export function useGoals() {
       const response = await authenticatedFetch("/api/goals", { cache: "no-store" });
       const payload = await response.json() as OperatorGoal[] | { error?: string };
       if (!response.ok) throw new Error(!Array.isArray(payload) && payload.error || "Could not load goals.");
-      setGoals(payload as OperatorGoal[]);
+      const nextGoals = payload as OperatorGoal[];
+      setGoals(nextGoals);
+      setLiveUpdates((current) => {
+        const next = { ...current };
+        for (const goal of nextGoals) if (goal.status === "completed") delete next[goal.id];
+        return next;
+      });
       setError(undefined);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load goals.");
@@ -28,6 +35,11 @@ export function useGoals() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => { void refresh(); });
     const events = new EventSource("/api/events/stream");
+    events.onopen = () => setRuntimeOnline(true);
+    events.onerror = () => {
+      setRuntimeOnline(false);
+      setLiveUpdates({});
+    };
     events.onmessage = (message) => {
       const event = JSON.parse(message.data) as { type?: string; goal_id?: string; task_id?: string; id?: string; state?: GoalLiveUpdate["state"]; summary?: string; name?: string; message?: string; service?: string; status?: "done" | "error" };
       if (event.type === "goals_changed") void refresh();
@@ -36,7 +48,6 @@ export function useGoals() {
           const active = event.state === "planning" || event.state === "queued" || event.state === "running";
           return { ...current, [event.goal_id as string]: { ...current[event.goal_id as string], state: event.state as GoalLiveUpdate["state"], summary: event.summary, tool: active ? current[event.goal_id as string]?.tool : undefined } };
         });
-        void refresh();
       }
       if (event.type === "goal_tool" && event.goal_id && event.name && event.message && event.service) {
         setLiveUpdates((current) => ({ ...current, [event.goal_id as string]: { ...current[event.goal_id as string], state: "running", tool: { id: event.id, taskId: event.task_id, message: event.message as string, name: event.name as string, service: event.service as string, status: "running" } } }));
@@ -86,7 +97,7 @@ export function useGoals() {
     await refresh();
   }, [refresh]);
 
-  return { createAutomation, createGoal, deleteGoal, error, goals, liveUpdates, loaded, refresh, setGoalStatus, updateGoal };
+  return { createAutomation, createGoal, deleteGoal, error, goals, liveUpdates, loaded, refresh, runtimeOnline, setGoalStatus, updateGoal };
 }
 
 async function requestGoal(path: string, body: Record<string, unknown>, method: "POST" | "PATCH") {

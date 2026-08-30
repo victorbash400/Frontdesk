@@ -1,7 +1,0 @@
-.updates { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
-.updates li { position: relative; padding-left: 13px; color: #5f5f5b; font-size: 11px; line-height: 1.5; }
-.updates li::before { position: absolute; top: 0; left: 0; color: #aaa9a4; content: "–"; }
-.updates li[data-live="true"] { overflow: hidden; color: #343431; font-size: 12px; font-weight: 550; }
-.updates li[data-live="true"]::after { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 18%, rgb(255 255 255 / 78%) 46%, transparent 72%); content: ""; transform: translateX(-110%); animation: goal-step-shimmer 1.45s ease-in-out infinite; }
-@keyframes goal-step-shimmer { to { transform: translateX(110%); } }
-@media (prefers-reduced-motion: reduce) { .updates li[data-live="true"]::after { display: none; } }

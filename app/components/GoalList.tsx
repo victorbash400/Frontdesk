@@ -11,6 +11,7 @@ type GoalListProps = {
   goals: OperatorGoal[];
   plugins: PluginDefinition[];
   liveUpdates: Record<string, GoalLiveUpdate>;
+  runtimeOnline: boolean;
   onSelect: (id?: string) => void;
   onDelete: (id: string) => Promise<void>;
   onStatusChange: (id: string, status: GoalStatus) => void;
@@ -19,12 +20,12 @@ type GoalListProps = {
   selecting: boolean;
 };
 
-export function GoalList({ clients, goals, liveUpdates, plugins, selectedId, selectedIds, selecting, onDelete, onSelect, onStatusChange, onToggleSelection }: GoalListProps) {
+export function GoalList({ clients, goals, liveUpdates, plugins, runtimeOnline, selectedId, selectedIds, selecting, onDelete, onSelect, onStatusChange, onToggleSelection }: GoalListProps) {
   return (
     <section aria-label="Goal list" className={styles.list} data-empty={!goals.length}>
       {goals.length ? goals.map((goal) => {
         const expanded = goal.id === selectedId;
-        return <GoalRow detail={<GoalDetail goal={goal} liveUpdate={liveUpdates[goal.id]} onDelete={() => onDelete(goal.id)} onStatusChange={(status) => onStatusChange(goal.id, status)} plugins={plugins} />} expanded={expanded} goal={goal} key={goal.id} liveUpdate={liveUpdates[goal.id]} onSelect={() => selecting ? onToggleSelection(goal.id) : onSelect(expanded ? undefined : goal.id)} selected={selectedIds.has(goal.id)} selecting={selecting} />;
+        return <GoalRow detail={<GoalDetail goal={goal} liveUpdate={liveUpdates[goal.id]} onDelete={() => onDelete(goal.id)} onStatusChange={(status) => onStatusChange(goal.id, status)} plugins={plugins} runtimeOnline={runtimeOnline} />} expanded={expanded} goal={goal} key={goal.id} liveUpdate={liveUpdates[goal.id]} onSelect={() => selecting ? onToggleSelection(goal.id) : onSelect(expanded ? undefined : goal.id)} runtimeOnline={runtimeOnline} selected={selectedIds.has(goal.id)} selecting={selecting} />;
       }) : <p>{clients.length ? "Goals in this view will appear here" : "Create a client before adding goals"}</p>}
     </section>
   );

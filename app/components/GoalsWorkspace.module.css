@@ -8,6 +8,8 @@
 .controls { display: flex; margin: 24px 0 17px; align-items: center; justify-content: space-between; gap: 16px; }
 .controls nav { display: flex; padding: 2px; border-radius: 10px; background: #eeeeec; }
 .controls nav button { height: 27px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #777772; font-size: 11px; cursor: pointer; }
+.controls nav button { display: flex; align-items: center; gap: 5px; }
+.controls nav .questionAlert { width: 11px; height: 11px; color: #c33b32; stroke-width: 2.2; }
 .controls nav button[aria-current="page"] { background: #fff; color: #30302e; box-shadow: 0 1px 4px rgb(0 0 0 / 9%); }
 .controls > span { display: flex; gap: 7px; }
 .controls label { position: relative; display: flex; height: 31px; align-items: center; border: 1px solid #e0e0dd; border-radius: 16px; color: #777772; background: #fff; }

@@ -1,28 +1,24 @@
-import { Check, Circle, LoaderCircle, Pause, X } from "lucide-react";
-
 import type { GoalAssignment } from "../types/goal";
 import styles from "./GoalTaskBoard.module.css";
 
-export function GoalTaskBoard({ tasks }: { tasks: GoalAssignment[] }) {
-  const plannedTasks = tasks.filter((task) => task.title.trim());
-  if (!plannedTasks.length) return null;
+export function GoalTaskBoard({ runtimeOnline, tasks }: { runtimeOnline: boolean; tasks: GoalAssignment[] }) {
+  const orderedTasks = tasks
+    .filter((task) => task.title.trim())
+    .toSorted((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const lines = orderedTasks.flatMap((task) => {
+    const updates = task.updates
+      .filter((update) => update.message.trim())
+      .toSorted((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .filter((update, index, items) => items.findIndex((item) => item.message.trim() === update.message.trim()) === index);
+    const taskLine = { id: task.id, message: task.title, active: runtimeOnline && task.status === "running" && !updates.length };
+    return [taskLine, ...updates.map((update, index) => ({
+      id: update.id,
+      message: update.message,
+      active: runtimeOnline && task.status === "running" && index === updates.length - 1,
+    }))];
+  });
+  if (!lines.length) return null;
   return <ol aria-label="Goal task board" className={styles.board}>
-    {plannedTasks.map((task) => <li data-state={task.status} key={task.id}>
-      <span className={styles.marker}>{marker(task.status)}</span>
-      <span className={styles.content}>
-        <strong>{task.title}</strong>
-        {task.currentStep && task.currentStep !== task.title ? <span className={styles.step}>{task.currentStep}</span> : null}
-        {task.status === "running" ? <span aria-label={`${task.progress}% complete`} className={styles.progress}><i style={{ width: `${task.progress}%` }} /></span> : null}
-        {task.nextStep ? <small>Next: {task.nextStep}</small> : null}
-      </span>
-    </li>)}
+    {lines.map((line) => <li data-active={line.active || undefined} key={line.id}>{line.message}</li>)}
   </ol>;
-}
-
-function marker(status: string) {
-  if (status === "running") return <LoaderCircle aria-hidden="true" />;
-  if (status === "completed") return <Check aria-hidden="true" />;
-  if (status === "failed") return <X aria-hidden="true" />;
-  if (status === "blocked" || status === "cancelled") return <Pause aria-hidden="true" />;
-  return <Circle aria-hidden="true" />;
 }
