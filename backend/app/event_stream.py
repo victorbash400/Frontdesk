@@ -34,10 +34,10 @@ class AccountEventBroker:
             await asyncio.gather(pending, return_exceptions=True)
             await events.aclose()
 
-    async def events(self, account_id: str) -> AsyncIterator[dict[str, object]]:
+    async def events(self, account_id: str, ready: asyncio.Event | None = None) -> AsyncIterator[dict[str, object]]:
         """Yield account events directly for internal event-driven consumers."""
         if _postgres_url():
-            async for event in self._events_postgres(account_id):
+            async for event in self._events_postgres(account_id, ready):
                 yield event
             return
         loop = asyncio.get_running_loop()
@@ -45,6 +45,8 @@ class AccountEventBroker:
         subscriber = (loop, queue)
         with self._lock:
             self._subscribers.setdefault(account_id, set()).add(subscriber)
+        if ready is not None:
+            ready.set()
         try:
             while True:
                 yield await queue.get()
@@ -68,13 +70,15 @@ class AccountEventBroker:
         for loop, queue in subscribers:
             loop.call_soon_threadsafe(queue.put_nowait, event)
 
-    async def _events_postgres(self, account_id: str) -> AsyncIterator[dict[str, object]]:
+    async def _events_postgres(self, account_id: str, ready: asyncio.Event | None = None) -> AsyncIterator[dict[str, object]]:
         postgres_url = _postgres_url()
         if not postgres_url:
             return
         connection = await psycopg.AsyncConnection.connect(postgres_url, autocommit=True)
         try:
             await connection.execute(f"LISTEN {EVENT_CHANNEL}")
+            if ready is not None:
+                ready.set()
             async for notification in connection.notifies():
                 payload = json.loads(notification.payload)
                 if payload.get("account_id") == account_id and isinstance(payload.get("event"), dict):

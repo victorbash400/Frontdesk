@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import logging
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -29,6 +30,8 @@ from tools.goal_tool_registry import GoalToolRegistry
 from tools.goal_control import ask_goal_question, complete_goal, update_goal_progress
 from tools.tool_failures import begin_single_tool, finish_single_tool, stop_on_tool_error
 from meetings.models import MeetingSubmission
+from app.agent_runner import create_runner
+from app.runtime_lock import runtime_lock
 
 
 WORKER_INSTRUCTION = """You are Front Desk's goal worker. Complete the assigned goal with the direct tools and plugin namespaces available for this run. Direct tools are always available; plugin namespaces validate their connection only when you load them.
@@ -63,9 +66,21 @@ class GoalTaskManager:
         existing = self._workers.get(goal_id)
         if existing and not existing.done():
             return False
-        worker = asyncio.create_task(self._orchestrate(account_id, goal_id, instruction), name=f"goal-{goal_id}")
+        ownership = ExitStack()
+        if not ownership.enter_context(runtime_lock("goal", goal_id)):
+            ownership.close()
+            return False
+        try:
+            worker = asyncio.create_task(self._orchestrate(account_id, goal_id, instruction), name=f"goal-{goal_id}")
+        except BaseException:
+            ownership.close()
+            raise
         self._workers[goal_id] = worker
-        worker.add_done_callback(lambda finished: self._workers.pop(goal_id, None) if self._workers.get(goal_id) is finished else None)
+        def finished(done):
+            ownership.close()
+            if self._workers.get(goal_id) is done:
+                self._workers.pop(goal_id, None)
+        worker.add_done_callback(finished)
         return True
 
     async def delegate_from_meeting(
@@ -275,29 +290,35 @@ class GoalTaskManager:
     async def recover(self) -> None:
         """Pause interrupted user goals; startup must never execute external work."""
         with SessionLocal() as session:
-            interrupted = list(session.scalars(select(GoalAssignment).where(GoalAssignment.status.in_(("queued", "running")))))
-            for assignment in interrupted:
-                goal = session.get(Goal, assignment.goal_id)
-                if goal and goal.status == "active":
-                    previous_status = assignment.status
-                    if assignment.status == "running":
+            goal_ids = list(session.scalars(select(GoalAssignment.goal_id).where(GoalAssignment.status.in_(("queued", "running"))).distinct()))
+        for goal_id in goal_ids:
+            with runtime_lock("goal", goal_id) as acquired:
+                if not acquired:
+                    continue
+                with SessionLocal() as session:
+                    goal = session.get(Goal, goal_id)
+                    if not goal or goal.status != "active":
+                        continue
+                    interrupted = list(session.scalars(select(GoalAssignment).where(GoalAssignment.goal_id == goal_id, GoalAssignment.status.in_(("queued", "running")))))
+                    for assignment in interrupted:
                         assignment.status = "queued"
                         assignment.phase = "queued"
                         assignment.finished_at = None
+                    if not interrupted:
+                        continue
                     goal.status = "paused"
                     goal.run_state = "paused"
-                    goal.current_step = assignment.current_step or assignment.title
-                    logger.info(
-                        "goal=%s task=%s startup=paused previous_status=%s",
-                        goal.id, assignment.id, previous_status,
-                    )
-            session.commit()
+                    goal.current_step = interrupted[0].current_step or interrupted[0].title
+                    logger.info("goal=%s startup=paused reason=previous_runtime_ended", goal.id)
+                    session.commit()
 
     async def _orchestrate(self, account_id: str, goal_id: str, instruction: str | None = None) -> None:
         lock = self._locks.setdefault(goal_id, asyncio.Lock())
         async with lock:
             try:
                 goal = self._goal(account_id, goal_id)
+                if goal.status != "active":
+                    return
                 assignments = await self._planned_assignments(account_id, goal, instruction)
                 for assignment_id in assignments:
                     status = await self._run_assignment(account_id, goal_id, assignment_id)
@@ -607,7 +628,7 @@ class GoalTaskManager:
         call_instruction = "For a direct client call, create a Meet space without a Calendar event, email its exact link to the client's profile email, join it with join_client_meeting, then call wait_for_client_in_meeting and end this worker run. The dedicated meeting worker alone monitors the participant and handles audio. Never use raw browser controls to add Meet attendees, send Meet chat invitations, choose meeting media, join a Front Desk meeting, or monitor a participant."
         instruction = f"{WORKER_INSTRUCTION}\n\n{call_instruction}\n\nPlugin namespace directory:\n{directory}" + (f"\n\nSelected organization skills for this task:\n{skill_instructions}" if skill_instructions else "")
         agent = Agent(name="front_desk_goal_worker", description="Completes one persistent Front Desk goal.", model=model, instruction=instruction, tools=tools, before_tool_callback=begin_single_tool, after_tool_callback=finish_single_tool, on_tool_error_callback=stop_on_tool_error, generate_content_config=types.GenerateContentConfig(thinking_config=types.ThinkingConfig(include_thoughts=True, thinking_level=types.ThinkingLevel.MEDIUM)))
-        return Runner(app=App(name="front_desk_goal_worker", root_agent=agent), session_service=sessions)
+        return create_runner(app=App(name="front_desk_goal_worker", root_agent=agent), session_service=sessions)
 
     def _assignment_skills(self, account_id: str, assignment: GoalAssignment) -> list[Skill]:
         skill_ids = json.loads(assignment.skill_ids)

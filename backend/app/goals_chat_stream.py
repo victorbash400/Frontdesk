@@ -4,15 +4,15 @@ import json
 from collections.abc import AsyncIterator
 
 from google.adk.agents.run_config import RunConfig, StreamingMode
-from google.adk.runners import Runner
 from google.genai import types
 
 from agents.agents import name_chat
 from agents.goals_chat_agent import create_goals_chat_app
 from app.chat_stream import sessions
+from app.agent_runner import create_runner
 
 
-runner = Runner(app=create_goals_chat_app(), session_service=sessions)
+runner = create_runner(app=create_goals_chat_app(), session_service=sessions)
 _session_locks: dict[str, asyncio.Lock] = {}
 
 

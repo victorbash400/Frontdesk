@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     playwright_extension_token: str = ""
     playwright_profile_directory: str = ""
     browser_cloud_relay: bool = False
+    agent_engine_resource: str = ""
     google_workspace_events_topic: str = ""
     public_api_url: str = "http://127.0.0.1:8000"
 

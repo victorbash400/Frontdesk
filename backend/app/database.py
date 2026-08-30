@@ -20,6 +20,19 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 def initialize_database() -> None:
+    if engine.dialect.name != "postgresql":
+        _initialize_database()
+        return
+    # Serialize schema inspection and migration across concurrently starting replicas.
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        connection.execute(text("SELECT pg_advisory_lock(734926180521)"))
+        try:
+            _initialize_database()
+        finally:
+            connection.execute(text("SELECT pg_advisory_unlock(734926180521)"))
+
+
+def _initialize_database() -> None:
     from . import models  # noqa: F401
     from meetings import models as meeting_models  # noqa: F401
 

@@ -47,7 +47,16 @@ def authenticate_account(session: Session, email_input: str, password: str) -> A
 
 def ensure_demo_account(session: Session) -> Account:
     account = account_by_email(session, DEMO_EMAIL)
-    return account or create_account(session, DEMO_EMAIL, DEMO_PASSWORD, "Demo")
+    if account:
+        return account
+    try:
+        return create_account(session, DEMO_EMAIL, DEMO_PASSWORD, "Demo")
+    except ValueError:
+        # Another replica may have created this account after our initial read.
+        account = account_by_email(session, DEMO_EMAIL)
+        if account is None:
+            raise
+        return account
 
 
 def account_by_email(session: Session, email: str) -> Account | None:

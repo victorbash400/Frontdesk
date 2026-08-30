@@ -10,6 +10,7 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.agent_runner import create_runner
 
 
 class GoalTaskOperation(BaseModel):
@@ -56,7 +57,7 @@ def create_goal_planner_runner(session_service: BaseSessionService) -> Runner:
             thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
         ),
     )
-    return Runner(app=App(name="front_desk_goal_planner", root_agent=planner), session_service=session_service)
+    return create_runner(app=App(name="front_desk_goal_planner", root_agent=planner), session_service=session_service)
 
 
 async def plan_goal(runner: Runner, account_id: str, session_id: str, request: str, existing_tasks: list[dict[str, object]], skills: list[dict[str, object]], preferred_skill_ids: list[str]) -> GoalPlan:

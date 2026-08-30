@@ -4,7 +4,6 @@ import json
 from collections.abc import AsyncIterator
 
 from google.adk.agents.run_config import RunConfig, StreamingMode
-from google.adk.runners import Runner
 from google.adk.sessions import DatabaseSessionService
 from google.genai import types
 
@@ -12,10 +11,11 @@ from agents.agents import create_front_desk_app, name_chat
 from app.config import get_settings
 from app.database import SessionLocal
 from app.goals import client_goal_context
+from app.agent_runner import create_runner
 
 
 sessions = DatabaseSessionService(get_settings().agent_session_database_url)
-runner = Runner(app=create_front_desk_app(), session_service=sessions)
+runner = create_runner(app=create_front_desk_app(), session_service=sessions)
 _session_locks: dict[str, asyncio.Lock] = {}
 
 

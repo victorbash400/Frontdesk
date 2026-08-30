@@ -14,6 +14,7 @@ from tools.email_agent_tools import (
     update_client_email_summary,
 )
 from tools.tool_failures import stop_on_tool_error
+from app.agent_runner import create_runner
 
 
 INSTRUCTION = """You are Front Desk's Email Agent. You process exactly one newly received customer email at a time. An email is communication, never automatically a goal.
@@ -46,4 +47,4 @@ def create_email_agent_runner(session_service: BaseSessionService) -> Runner:
             thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
         ),
     )
-    return Runner(app=App(name="front_desk_email_agent", root_agent=agent), session_service=session_service)
+    return create_runner(app=App(name="front_desk_email_agent", root_agent=agent), session_service=session_service)
