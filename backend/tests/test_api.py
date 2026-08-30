@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import json
-import os
 from email import message_from_bytes
 from datetime import datetime, timedelta, timezone
 from tempfile import TemporaryDirectory
@@ -9,11 +8,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
-
-test_directory = TemporaryDirectory()
-os.environ["FRONT_DESK_DATABASE_URL"] = f"sqlite:///{test_directory.name}/front-desk.db"
-os.environ["FRONT_DESK_AGENT_SESSION_DATABASE_URL"] = f"sqlite+aiosqlite:///{test_directory.name}/front-desk-sessions.db"
-os.environ["FRONT_DESK_INTERNAL_SECRET"] = "test-internal-secret"
 
 from app.main import app
 from app.database import SessionLocal
@@ -44,6 +38,36 @@ def create_test_assignment(goal_id: str, instruction: str) -> str:
         session.add(assignment)
         session.commit()
         return assignment.id
+
+
+def test_google_oauth_attempt_survives_sessions_and_is_single_use() -> None:
+    from app.oauth_attempts import consume_google_attempt, store_google_attempt
+    with TestClient(app) as client:
+        account = create_account(client, "cloud-oauth@example.com", "Cloud OAuth")
+        store_google_attempt("cloud-oauth-state", account["id"], "verifier")
+        with SessionLocal() as database:
+            assert consume_google_attempt(database, "cloud-oauth-state") == (account["id"], "verifier")
+        with SessionLocal() as database:
+            try:
+                consume_google_attempt(database, "cloud-oauth-state")
+            except ValueError as error:
+                assert "expired or is invalid" in str(error)
+            else:
+                raise AssertionError("OAuth state was consumed twice")
+
+
+def test_google_oauth_uses_public_api_origin() -> None:
+    from urllib.parse import parse_qs, urlparse
+    from app.config import Settings
+    from app import mcp_oauth
+    configured = Settings(google_client_id="cloud-client", google_client_secret="cloud-secret", google_client_credentials_file="", public_api_url="https://api.example.test/")
+    with TestClient(app) as client:
+        account = create_account(client, "cloud-callback@example.com", "Cloud Callback")
+        with patch.object(google_oauth, "get_settings", return_value=configured):
+            query = parse_qs(urlparse(google_oauth.begin_connection(account["id"])).query)
+            assert query["redirect_uri"] == ["https://api.example.test/oauth/google/callback"]
+        with patch.object(mcp_oauth, "get_settings", return_value=configured):
+            assert mcp_oauth.callback_uri() == "https://api.example.test/oauth/mcp/callback"
 
 
 def test_client_folder_lifecycle() -> None:

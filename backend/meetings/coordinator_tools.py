@@ -1,16 +1,13 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.database import SessionLocal
 from app.goal_tasks import goal_tasks
 from app.goals import answer_notification, assignment_snapshot
 from app.models import Goal, GoalAssignment, GoalNotification
-from meetings.models import Meeting
-
-
-_pending_confirmations: dict[str, dict[str, object]] = {}
+from meetings.models import Meeting, MeetingConfirmation
 
 
 async def execute_coordinator_tool(
@@ -27,16 +24,16 @@ async def execute_coordinator_tool(
             instruction = _required_text(args, "instruction")
             question = _required_text(args, "question")
             confirmation_id = f"confirmation_{uuid4().hex}"
-            _pending_confirmations[confirmation_id] = {
-                "account_id": account_id,
-                "client_id": client_id,
-                "meeting_id": meeting_id,
-                "goal_id": goal_id,
-                "instruction": instruction,
-                "question": question,
-                "prepared_at": datetime.now(timezone.utc),
-                "client_turn_sequence": int(args.get("_client_turn_sequence") or 0),
-            }
+            with SessionLocal() as session:
+                meeting = session.get(Meeting, meeting_id)
+                session.add(MeetingConfirmation(
+                    id=confirmation_id, account_id=account_id, client_id=client_id,
+                    meeting_id=meeting_id, goal_id=goal_id, runtime_id=meeting.active_runtime_id,
+                    instruction=instruction, question=question,
+                    prepared_at=datetime.now(timezone.utc),
+                    client_turn_sequence=int(args.get("_client_turn_sequence") or 0),
+                ))
+                session.commit()
             return {
                 "status": "awaiting_client_confirmation",
                 "confirmation_id": confirmation_id,
@@ -47,23 +44,36 @@ async def execute_coordinator_tool(
             answer = _required_text(args, "answer")
             observed_answer = str(args.get("_observed_client_answer") or "").strip()
             observed_sequence = int(args.get("_client_turn_sequence") or 0)
-            pending = _pending_confirmations.get(confirmation_id)
-            if not pending or any(pending[key] != value for key, value in (
+            with SessionLocal() as session:
+                pending = session.get(MeetingConfirmation, confirmation_id)
+                meeting = session.get(Meeting, meeting_id)
+            if not pending or pending.status != "pending" or pending.runtime_id != meeting.active_runtime_id or any(getattr(pending, key) != value for key, value in (
                 ("account_id", account_id), ("client_id", client_id), ("meeting_id", meeting_id), ("goal_id", goal_id),
             )):
                 raise ValueError("That pending client confirmation is unavailable for this meeting.")
-            if observed_sequence <= int(pending["client_turn_sequence"]):
+            if observed_sequence <= pending.client_turn_sequence:
                 raise ValueError("Wait for the client to answer the confirmation question before starting work.")
             if not observed_answer or answer.strip().casefold() != observed_answer.casefold():
                 raise ValueError("Pass the client's exact latest answer before starting work.")
+            with SessionLocal() as session:
+                claimed = session.execute(update(MeetingConfirmation).where(
+                    MeetingConfirmation.id == confirmation_id,
+                    MeetingConfirmation.status == "pending",
+                ).values(status="dispatching"))
+                session.commit()
+                if claimed.rowcount != 1:
+                    raise ValueError("That client confirmation has already been used.")
             result = await goal_tasks.delegate_from_meeting(
                 account_id,
                 goal_id,
                 meeting_id,
-                f"The client explicitly confirmed this action in meeting {meeting_id}: {observed_answer}\n\n{pending['instruction']}",
+                f"The client explicitly confirmed this action in meeting {meeting_id}: {observed_answer}\n\n{pending.instruction}",
             )
-            if result.get("status") == "accepted":
-                _pending_confirmations.pop(confirmation_id, None)
+            with SessionLocal() as session:
+                session.execute(update(MeetingConfirmation).where(MeetingConfirmation.id == confirmation_id).values(
+                    status="consumed" if result.get("status") == "accepted" else "failed",
+                ))
+                session.commit()
             return result
         if name == "inspect_coordinator_task":
             return {"status": "success", "task": _meeting_task(account_id, meeting_id, str(args.get("task_id") or ""))}

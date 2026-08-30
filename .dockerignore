@@ -1,7 +1,14 @@
 .git
 .gitignore
 .env
+.env.*
 backend/.env
+backend/.env.*
+backend/*.db*
+backend/goal-*.png
+backend/.browser-artifacts/
+**/__pycache__/
+**/*.pyc
 backend/*.json
 backend/__pycache__/
 backend/.pytest_cache/

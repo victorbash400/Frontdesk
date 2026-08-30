@@ -2,7 +2,6 @@ import base64
 import hashlib
 import json
 import secrets
-from dataclasses import dataclass
 from urllib.parse import urlencode, urlparse
 
 import httpx
@@ -12,9 +11,9 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .models import OAuthConnection, PluginPermission
 from .secret_store import decrypt_secret, encrypt_secret
+from .oauth_attempts import consume_google_attempt, store_google_attempt
 
 
-REDIRECT_URI = "http://127.0.0.1:8000/oauth/google/callback"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
@@ -54,15 +53,6 @@ WORKSPACE_PERMISSIONS = (
     ("workspace.forms", "Google Forms", "Create forms and read responses"),
     ("workspace.meet", "Google Meet", "Create meetings and read meeting details"),
 )
-
-
-@dataclass
-class PendingConnection:
-    account_id: str
-    verifier: str
-
-
-pending_connections: dict[str, PendingConnection] = {}
 
 
 def decrypt_refresh_token(connection: OAuthConnection) -> str:
@@ -136,10 +126,10 @@ def begin_connection(account_id: str) -> str:
     state = secrets.token_urlsafe(32)
     verifier = secrets.token_urlsafe(64)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
-    pending_connections[state] = PendingConnection(account_id=account_id, verifier=verifier)
+    store_google_attempt(state, account_id, verifier)
     return AUTH_URL + "?" + urlencode({
         "client_id": client_id,
-        "redirect_uri": REDIRECT_URI,
+        "redirect_uri": settings.public_api_url.rstrip("/") + "/oauth/google/callback",
         "response_type": "code",
         "scope": " ".join(SCOPES),
         "access_type": "offline",
@@ -152,9 +142,7 @@ def begin_connection(account_id: str) -> str:
 
 
 async def finish_connection(session: Session, state: str, code: str) -> str:
-    pending = pending_connections.pop(state, None)
-    if not pending:
-        raise ValueError("The Google connection request expired or is invalid.")
+    account_id, verifier = consume_google_attempt(session, state)
     settings = get_settings()
     client_id, client_secret = settings.google_oauth_credentials
     async with httpx.AsyncClient(timeout=20) as client:
@@ -162,9 +150,9 @@ async def finish_connection(session: Session, state: str, code: str) -> str:
             "client_id": client_id,
             "client_secret": client_secret,
             "code": code,
-            "code_verifier": pending.verifier,
+            "code_verifier": verifier,
             "grant_type": "authorization_code",
-            "redirect_uri": REDIRECT_URI,
+            "redirect_uri": settings.public_api_url.rstrip("/") + "/oauth/google/callback",
         })
         token_response.raise_for_status()
         tokens = token_response.json()
@@ -185,7 +173,7 @@ async def finish_connection(session: Session, state: str, code: str) -> str:
         unavailable_permissions = {"workspace.gmail"} if GMAIL_SCOPE not in granted_scopes else set()
         unavailable_permissions.update(await _validate_workspace_token(client, access_token, check_gmail=GMAIL_SCOPE in granted_scopes))
     connection = session.scalar(select(OAuthConnection).where(
-        OAuthConnection.account_id == pending.account_id,
+        OAuthConnection.account_id == account_id,
         OAuthConnection.provider == "google_workspace",
     ))
     if connection:
@@ -197,7 +185,7 @@ async def finish_connection(session: Session, state: str, code: str) -> str:
         connection.unavailable_permissions = json.dumps(sorted(unavailable_permissions))
     else:
         session.add(OAuthConnection(
-            account_id=pending.account_id,
+            account_id=account_id,
             provider="google_workspace",
             email=email,
             profile_name=name,
@@ -208,13 +196,13 @@ async def finish_connection(session: Session, state: str, code: str) -> str:
         ))
     for permission_id in unavailable_permissions:
         permission = session.scalar(select(PluginPermission).where(
-            PluginPermission.account_id == pending.account_id,
+            PluginPermission.account_id == account_id,
             PluginPermission.permission_id == permission_id,
         ))
         if permission:
             permission.enabled = False
         else:
-            session.add(PluginPermission(account_id=pending.account_id, permission_id=permission_id, enabled=False))
+            session.add(PluginPermission(account_id=account_id, permission_id=permission_id, enabled=False))
     session.commit()
     return email
 

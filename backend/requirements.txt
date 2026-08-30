@@ -4,9 +4,14 @@ sqlalchemy
 psycopg[binary]
 pydantic-settings
 httpx
-pytest
 google-adk[mcp]
-google-cloud-aiplatform
+google-cloud-aiplatform[agent_engines,adk]
+google-genai
+google-auth
+mcp
+PyJWT[crypto]
+pydantic
+starlette
 cryptography
 aiosqlite
 greenlet

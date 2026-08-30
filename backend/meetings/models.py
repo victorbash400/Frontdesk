@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -59,3 +59,33 @@ class MeetingTurn(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class MeetingConfirmation(Base):
+    __tablename__ = "meeting_confirmations"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), index=True)
+    runtime_id: Mapped[str | None] = mapped_column(String(36))
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    client_id: Mapped[str] = mapped_column(String(128))
+    goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"))
+    instruction: Mapped[str] = mapped_column(Text)
+    question: Mapped[str] = mapped_column(Text)
+    client_turn_sequence: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24), default="pending")
+    prepared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class MeetingSubmission(Base):
+    __tablename__ = "meeting_submissions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), index=True)
+    instruction: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(24), default="received")
+    task_id: Mapped[str | None] = mapped_column(String(36))
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

@@ -19,7 +19,10 @@ from .models import GitHubRepositoryAccess, PluginConnection, PluginInstallation
 from .secret_store import encrypt_secret
 
 
-CALLBACK_URI = "http://127.0.0.1:8000/oauth/mcp/callback"
+def callback_uri() -> str:
+    return get_settings().public_api_url.rstrip("/") + "/oauth/mcp/callback"
+
+
 PROTOCOL_VERSION = "2025-06-18"
 INITIALIZE_BODY = {
     "jsonrpc": "2.0",
@@ -169,7 +172,7 @@ async def begin_connection(session: Session, account_id: str, plugin_id: str) ->
     parameters = {
         "response_type": "code",
         "client_id": client_info["client_id"],
-        "redirect_uri": CALLBACK_URI,
+        "redirect_uri": callback_uri(),
         "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
@@ -194,7 +197,7 @@ async def finish_connection(session: Session, state: str, code: str) -> tuple[st
     token_data = {
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": CALLBACK_URI,
+        "redirect_uri": callback_uri(),
         "client_id": client_info["client_id"],
         "code_verifier": context["verifier"],
         "resource": context["resource"],
@@ -328,7 +331,7 @@ async def _client_information(provider: MCPProvider, discovery: dict[str, str]) 
         raise RuntimeError(f"{provider.id.title()} requires a registered OAuth client.")
     payload = {
         "client_name": "Front Desk",
-        "redirect_uris": [CALLBACK_URI],
+        "redirect_uris": [callback_uri()],
         "grant_types": ["authorization_code", "refresh_token"],
         "response_types": ["code"],
         "token_endpoint_auth_method": "none",

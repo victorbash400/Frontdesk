@@ -1,7 +1,11 @@
 .git
+.env
+.env.*
 .next
 node_modules
 backend/.env
+backend/.env.*
+backend/goal-*.png
 backend/.venv
 backend/*.db
 backend/.browser-artifacts

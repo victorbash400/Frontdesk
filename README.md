@@ -18,7 +18,7 @@ Front Desk is a client-work workspace with direct Gemini chat, visible model rea
 
 1. Copy `.env.example` to `.env.local` and `backend/.env.example` to `backend/.env`.
 2. Run `pnpm install`.
-3. Create `backend/.venv` and install `backend/requirements.txt`.
+3. Create `backend/.venv` and install `backend/requirements-dev.txt` for local development and tests. Production uses `backend/requirements.txt`.
 4. Authenticate Application Default Credentials and set `front-desk-20260824` as the quota project.
 5. Run `pnpm backend` and `pnpm dev` in separate terminals when you are ready to run the app.
 

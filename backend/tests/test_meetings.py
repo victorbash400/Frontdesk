@@ -252,6 +252,14 @@ def test_meeting_delegation_persists_an_independent_auxiliary_task() -> None:
         account = _account(client, "meet-coordinator-persistence@example.com")
         with SessionLocal() as session:
             sample = ensure_angeline_sample(session, account["id"])
+            session.add(Meeting(
+                id="meeting-persisted", account_id=account["id"],
+                client_id=sample["clientId"], goal_id=sample["goalId"],
+                client_email="client@example.com", title="Persisted submission",
+                state="agent_active", start_time=datetime.now(timezone.utc),
+                end_time=datetime.now(timezone.utc) + timedelta(minutes=30),
+            ))
+            session.commit()
 
         manager = GoalTaskManager()
         plan = GoalPlan(operations=[GoalTaskOperation(
@@ -290,6 +298,7 @@ def test_meeting_delegation_persists_an_independent_auxiliary_task() -> None:
         assert result["status"] == "accepted"
         submission = manager.meeting_submissions(account["id"], "meeting-persisted")[0]
         assert submission["status"] == "planned"
+        assert GoalTaskManager().meeting_submissions(account["id"], "meeting-persisted") == [submission]
         with SessionLocal() as session:
             task = session.get(GoalAssignment, submission["task_id"])
             assert task is not None

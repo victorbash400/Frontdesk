@@ -28,6 +28,7 @@ from tools.client_context import list_clients, read_client_profile
 from tools.goal_tool_registry import GoalToolRegistry
 from tools.goal_control import ask_goal_question, complete_goal, update_goal_progress
 from tools.tool_failures import begin_single_tool, finish_single_tool, stop_on_tool_error
+from meetings.models import MeetingSubmission
 
 
 WORKER_INSTRUCTION = """You are Front Desk's goal worker. Complete the assigned goal with the direct tools and plugin namespaces available for this run. Direct tools are always available; plugin namespaces validate their connection only when you load them.
@@ -57,7 +58,6 @@ class GoalTaskManager:
         self._meeting_submission_workers: dict[str, asyncio.Task[None]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._replanning: set[str] = set()
-        self._meeting_submissions: dict[str, dict[str, object]] = {}
 
     async def start(self, account_id: str, goal_id: str, instruction: str | None = None) -> bool:
         existing = self._workers.get(goal_id)
@@ -83,7 +83,7 @@ class GoalTaskManager:
         if goal.status != "active":
             return {"status": "failed", "error": "Only an active meeting goal can accept delegated work."}
         submission_id = f"submission_{uuid4().hex}"
-        self._meeting_submissions[submission_id] = {
+        submission = {
             "id": submission_id,
             "account_id": account_id,
             "goal_id": goal_id,
@@ -93,6 +93,9 @@ class GoalTaskManager:
             "task_id": None,
             "error": None,
         }
+        with SessionLocal() as session:
+            session.add(MeetingSubmission(**submission))
+            session.commit()
         worker = asyncio.create_task(
             self._admit_meeting_submission(submission_id),
             name=f"meeting-submission-{submission_id}",
@@ -107,7 +110,11 @@ class GoalTaskManager:
         return {"status": "accepted", "goal_id": goal_id, "submission_id": submission_id}
 
     async def _admit_meeting_submission(self, submission_id: str) -> None:
-        submission = self._meeting_submissions[submission_id]
+        with SessionLocal() as session:
+            record = session.get(MeetingSubmission, submission_id)
+            if not record:
+                raise ValueError("Meeting submission not found.")
+            submission = {key: getattr(record, key) for key in ("id", "account_id", "goal_id", "meeting_id", "instruction", "status", "task_id", "error")}
         account_id = str(submission["account_id"])
         goal_id = str(submission["goal_id"])
         meeting_id = str(submission["meeting_id"])
@@ -118,6 +125,7 @@ class GoalTaskManager:
                 account_id, goal_id, meeting_id, str(submission["instruction"]),
             )
             submission.update(status="planned", task_id=assignment_id)
+            self._save_submission(submission)
             account_events.publish(account_id, {"type": "goals_changed", "client_id": client_id, "goal_id": goal_id})
             account_events.publish(account_id, {"type": "meeting_submission_changed", "meeting_id": meeting_id, **self._meeting_submission_snapshot(submission)})
             self._publish_task(account_id, assignment_id)
@@ -125,6 +133,7 @@ class GoalTaskManager:
             await self._run_delegated_assignments(account_id, goal_id, [assignment_id])
         except asyncio.CancelledError:
             submission.update(status="cancelled", error=None)
+            self._save_submission(submission)
             account_events.publish(
                 account_id,
                 {"type": "meeting_submission_changed", "meeting_id": meeting_id, **self._meeting_submission_snapshot(submission)},
@@ -133,15 +142,27 @@ class GoalTaskManager:
         except Exception as error:
             message = str(error).strip() or type(error).__name__
             submission.update(status="failed", error=message)
+            self._save_submission(submission)
             account_events.publish(account_id, {"type": "meeting_submission_changed", "meeting_id": meeting_id, **self._meeting_submission_snapshot(submission)})
             logger.exception("meeting=%s submission=%s coordinator=failed error=%s", meeting_id, submission_id, message)
 
     def meeting_submissions(self, account_id: str, meeting_id: str) -> list[dict[str, object]]:
-        return [
-            self._meeting_submission_snapshot(item)
-            for item in self._meeting_submissions.values()
-            if item["account_id"] == account_id and item["meeting_id"] == meeting_id
-        ]
+        with SessionLocal() as session:
+            records = session.scalars(select(MeetingSubmission).where(
+                MeetingSubmission.account_id == account_id,
+                MeetingSubmission.meeting_id == meeting_id,
+            ).order_by(MeetingSubmission.created_at))
+            return [{key: getattr(item, key) for key in ("id", "status", "task_id", "instruction", "error")} for item in records]
+
+    @staticmethod
+    def _save_submission(submission: dict[str, object]) -> None:
+        with SessionLocal() as session:
+            record = session.get(MeetingSubmission, submission["id"])
+            if not record:
+                raise ValueError("Meeting submission not found.")
+            for key in ("status", "task_id", "error"):
+                setattr(record, key, submission[key])
+            session.commit()
 
     @staticmethod
     def _meeting_submission_snapshot(submission: dict[str, object]) -> dict[str, object]:
@@ -156,6 +177,7 @@ class GoalTaskManager:
     async def cancel(self, goal_id: str) -> bool:
         worker = self._workers.get(goal_id)
         with SessionLocal() as session:
+            submission_ids = set(session.scalars(select(MeetingSubmission.id).where(MeetingSubmission.goal_id == goal_id)))
             delegated_ids = set(session.scalars(select(GoalAssignment.id).where(
                 GoalAssignment.goal_id == goal_id,
                 GoalAssignment.auxiliary.is_(True),
@@ -168,7 +190,7 @@ class GoalTaskManager:
         submissions = [
             submission_worker
             for submission_id, submission_worker in self._meeting_submission_workers.items()
-            if self._meeting_submissions[submission_id]["goal_id"] == goal_id and not submission_worker.done()
+            if submission_id in submission_ids and not submission_worker.done()
         ]
         active = [item for item in [worker, *delegated, *submissions] if item and not item.done()]
         for item in active:
