@@ -1,6 +1,8 @@
-google-adk
-google-cloud-aiplatform[agent_engines,adk]
-google-genai
-httpx
-pydantic
-cloudpickle
+# Agent Engine unpickles classes created by this exact tested SDK set. Updating
+# either side independently can change private model fields and break startup.
+google-adk==2.7.1
+google-cloud-aiplatform[agent_engines,adk]==1.165.1
+google-genai==2.19.0
+httpx==0.28.1
+pydantic==2.13.4
+cloudpickle==3.1.2

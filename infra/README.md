@@ -13,6 +13,10 @@ scoped ADK agent definitions and calls back through the authenticated tool gatew
   screenshots, frontend assets, native builds, and environment files are excluded.
 - Stage Agent Engine with `deploy_agent_engine.py`; its package is separate from
   the backend and contains only `agent_runtime` Python files and requirements.
+- Keep the Agent Engine runtime requirements aligned with the environment that
+  serializes it. ADK and Gen AI SDK class internals are part of the serialized
+  artifact; an uncoordinated upgrade can make the remote agent fail before its
+  first model request.
 - Deploy a tagged Cloud Run revision with no traffic, verify authenticated API
   reads and a real Agent Engine tool round trip, then promote that exact revision.
 - Check both Cloud Run and Agent Engine logs after promotion.
