@@ -118,6 +118,15 @@ index d53d1ca..073fea0 100644
        }
        _onError(event) {
          debugLogger2(`<ws error> message=${event.message} type=${event.type} target=${event.target}`);
+@@ -72814,7 +72795,7 @@ async function createExtensionBrowser(channel, executablePath, clientName) {
+   let userDataDir;
+   if (!executablePath) {
+     userDataDir = process.env.PWTEST_EXTENSION_USER_DATA_DIR ?? defaultUserDataDirForChannel(channel);
+-    if (userDataDir && !await isPlaywrightExtensionInstalled(userDataDir))
++    if (!process.env.FRONT_DESK_BROWSER_CONNECT_URL && userDataDir && !await isPlaywrightExtensionInstalled(userDataDir))
+       throw new Error(`Playwright Extension not found in "${userDataDir}". Install it from ${playwrightExtensionInstallUrl}, or set the PLAYWRIGHT_MCP_EXECUTABLE_PATH environment variable to use a browser at a custom location.`);
+   }
+   const relay = new CDPRelayServer(channel, executablePath, userDataDir);
 @@ -74487,7 +74468,7 @@ var init_dashboardController = __esm({
        async navigate(params2) {
          if (!params2.url)
