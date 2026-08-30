@@ -19,6 +19,7 @@ from app.database import SessionLocal
 from app.event_stream import account_events
 from app.gemini import create_genai_client
 from app.models import DocumentContent, Goal, Node, Workspace
+from app.runtime_lock import runtime_lock
 from .coordinator_tools import execute_coordinator_tool
 from .models import Meeting
 from .service import append_turn, mark_agent_active, mark_meeting_state, record_agent_tool, record_meeting_diagnostic, require_meeting
@@ -144,8 +145,11 @@ async def run_meet_agent(websocket: WebSocket, meeting_id: str, ticket: str, voi
             with suppress(RuntimeError):
                 await previous[1].close(code=4001, reason="Superseded by the current bridge connection.")
         async with _runtime_locks.setdefault(meeting_id, asyncio.Lock()):
-            identity = verify_agent_ticket(ticket, meeting_id)
-            await _run_identity_bound_agent(websocket, identity, connection_id, voice, language)
+            with runtime_lock("meeting-agent", meeting_id) as acquired:
+                if not acquired:
+                    raise ValueError("This meeting already has an active agent connection. Wait for it to close before reconnecting.")
+                identity = verify_agent_ticket(ticket, meeting_id)
+                await _run_identity_bound_agent(websocket, identity, connection_id, voice, language)
     except WebSocketDisconnect:
         logger.info("meeting=%s connection=%s bridge=disconnected", meeting_id, connection_id)
     except errors.APIError as error:
