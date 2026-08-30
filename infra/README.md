@@ -32,3 +32,16 @@ connect to different Cloud Run instances.
 
 Keep the frontend on localhost until the separate frontend deployment is ready.
 Extension distribution packaging is a separate release step.
+
+## Database connection budget
+
+Cloud Run is capped at two instances. Each instance retains at most two application
+connections, one shared ADK session connection, and one event listener. Application
+overflow is capped at five and ADK overflow at one; event publishing uses a short-lived
+connection. Budget up to eleven connections per instance, plus release overlap and
+diagnostic jobs. Cloud SQL uses `max_connections=50`. Recheck this budget before
+increasing the Cloud Run instance cap; the original 25-connection database prevented
+both workers and replacement revisions from starting.
+
+Authentication releases its database session before streaming. Event subscribers
+share a single LISTEN connection per event loop, with account-scoped delivery.

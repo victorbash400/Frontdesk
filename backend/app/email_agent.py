@@ -3,19 +3,17 @@ import logging
 from contextlib import ExitStack
 from uuid import uuid4
 
-from google.adk.sessions import DatabaseSessionService
 from google.genai import types
 
 from agents.email_agent import create_email_agent_runner
-from app.config import get_settings
 from app.database import SessionLocal
 from app.event_stream import account_events
 from app.models import EmailAgentActivity, MailMessage
 from app.runtime_lock import runtime_lock
+from app.session_store import sessions
 
 
 logger = logging.getLogger(__name__)
-sessions = DatabaseSessionService(get_settings().agent_session_database_url)
 runner = create_email_agent_runner(sessions)
 
 
