@@ -6,8 +6,12 @@ export {};
 const PREFIX = '#front-desk-meet=';
 const encoded = location.hash.startsWith(PREFIX) ? location.hash.slice(PREFIX.length) : sessionStorage.getItem('frontDeskMeetWorker');
 
-if (encoded)
+if (encoded) {
+  const relay = ensureRelayElement();
+  relay.dataset.audioInputWorklet = chrome.runtime.getURL('lib/audio-input-processor.js');
+  relay.dataset.audioOutputWorklet = chrome.runtime.getURL('lib/audio-output-processor.js');
   void startRelay(encoded);
+}
 
 async function startRelay(encodedConfig: string): Promise<void> {
   sessionStorage.setItem('frontDeskMeetWorker', encodedConfig);

@@ -16,9 +16,10 @@ from sqlalchemy import select
 from agents.meet_agent import MeetAgentContext, live_config
 from app.config import get_settings
 from app.database import SessionLocal
-from app.goals import list_goals
+from app.event_stream import account_events
 from app.gemini import create_genai_client
-from tools.supervisor_tools import execute_client_tool
+from app.models import DocumentContent, Goal, Node, Workspace
+from .coordinator_tools import execute_coordinator_tool
 from .models import Meeting
 from .service import append_turn, mark_agent_active, mark_meeting_state, record_agent_tool, record_meeting_diagnostic, require_meeting
 
@@ -40,6 +41,15 @@ _active_sockets: dict[str, tuple[str, WebSocket]] = {}
 _runtime_locks: dict[str, asyncio.Lock] = {}
 _live_sessions: dict[str, dict[str, object]] = {}
 logger = logging.getLogger("uvicorn.error")
+COORDINATOR_TOOLS = {
+    "prepare_coordinator_action",
+    "confirm_coordinator_action",
+    "inspect_coordinator_task",
+    "list_coordinator_tasks",
+    "steer_coordinator_task",
+    "cancel_coordinator_task",
+    "answer_coordinator_question",
+}
 
 
 def create_agent_ticket(
@@ -176,21 +186,36 @@ async def _run_identity_bound_agent(
         settings = get_settings()
         with SessionLocal() as session:
             meeting = require_meeting(session, account_id, meeting_id)
-            goals = list_goals(session, account_id, meeting.client_id)
-            documents = execute_client_tool(account_id, meeting.client_id, "get_client_documents", {}).get("documents", [])
+            client = session.scalar(select(Node).join(Workspace).where(
+                Node.id == meeting.client_id,
+                Node.kind == "client",
+                Node.trashed_at.is_(None),
+                Workspace.owner_id == account_id,
+            ))
+            if not client:
+                raise RuntimeError("The meeting client profile is unavailable.")
+            profile = session.scalar(
+                select(DocumentContent.content)
+                .join(Node, Node.id == DocumentContent.node_id)
+                .where(Node.parent_id == client.id, Node.kind == "profile", Node.trashed_at.is_(None))
+            )
+            goal = session.get(Goal, meeting.goal_id) if meeting.goal_id else None
             context = MeetAgentContext(
                 meeting_id=meeting.id,
                 client_id=meeting.client_id,
+                client_name=client.name,
+                client_email=meeting.client_email,
+                client_profile=_compact_profile(profile or ""),
                 title=meeting.title,
                 purpose=meeting.description,
-                goals=goals,
-                documents=list(documents) if isinstance(documents, list) else [],
+                goal={"id": goal.id, "text": goal.text, "status": goal.status, "situation": goal.situation} if goal else None,
                 voice=voice,
                 language=LANGUAGES[language],
             )
         logger.info(
-            "meeting=%s runtime=%s agent=context_loaded goals=%s documents=%s voice=%s language=%s",
-            meeting_id, identity.runtime_id, len(context.goals), len(context.documents), voice, language,
+            "meeting=%s runtime=%s agent=context_loaded client=%s profile_chars=%s goal=%s voice=%s language=%s",
+            meeting_id, identity.runtime_id, context.client_id, len(context.client_profile),
+            str(context.goal.get("id")) if context.goal else "none", voice, language,
         )
         tab_id = await _register_bridge_and_wait_for_participant(websocket, identity)
         with SessionLocal() as session:
@@ -229,6 +254,14 @@ async def _register_bridge_and_wait_for_participant(websocket: WebSocket, identi
     while True:
         message = await websocket.receive()
         if message.get("type") == "websocket.disconnect":
+            logger.info(
+                "meeting=%s runtime=%s bridge=%s participant_gate=disconnected code=%s reason=%s",
+                identity.meeting_id,
+                identity.runtime_id,
+                identity.bridge_id,
+                message.get("code"),
+                message.get("reason") or "",
+            )
             raise WebSocketDisconnect
         text = message.get("text")
         if not text:
@@ -302,7 +335,27 @@ async def _bridge(
     meeting_id: str,
     session_state: dict[str, object],
 ) -> str:
+    model_idle = asyncio.Event()
+    model_idle.set()
+    playback_drained = asyncio.Event()
+    playback_drained.set()
+    user_speaking = False
+    pending_coordinator_results: dict[str, dict[str, object]] = {}
+    delivered_coordinator_results: set[str] = set()
+    coordinator_delivery_lock = asyncio.Lock()
+
+    async def deliver_coordinator_result() -> None:
+        async with coordinator_delivery_lock:
+            if not model_idle.is_set() or not playback_drained.is_set() or user_speaking or not pending_coordinator_results:
+                return
+            events = list(pending_coordinator_results.values())
+            delivered_coordinator_results.update(pending_coordinator_results)
+            pending_coordinator_results.clear()
+            model_idle.clear()
+            await live.send_realtime_input(text=_coordinator_notification(events))
+
     async def receive_media() -> str:
+        nonlocal user_speaking
         audio_received = False
         speech_detected = False
         audio_packets = 0
@@ -311,6 +364,12 @@ async def _bridge(
         while True:
             message = await websocket.receive()
             if message.get("type") == "websocket.disconnect":
+                logger.info(
+                    "meeting=%s media_bridge=disconnected code=%s reason=%s",
+                    meeting_id,
+                    message.get("code"),
+                    message.get("reason") or "",
+                )
                 raise WebSocketDisconnect
             packet = message.get("bytes")
             if packet:
@@ -325,6 +384,8 @@ async def _bridge(
                         logger.info("meeting=%s media=client_audio_received", meeting_id)
                     peak = _pcm_peak(payload)
                     maximum_peak = max(maximum_peak, peak)
+                    if peak >= 256:
+                        model_idle.clear()
                     if not speech_detected and peak >= 256:
                         speech_detected = True
                         with SessionLocal() as session:
@@ -349,6 +410,20 @@ async def _bridge(
                 if event_type == "diagnostic":
                     _record_bridge_diagnostic(meeting_id, "", "", "", payload)
                     continue
+                if event_type == "speech_started":
+                    user_speaking = True
+                    logger.info("meeting=%s client=speech_started", meeting_id)
+                    continue
+                if event_type == "speech_ended":
+                    user_speaking = False
+                    logger.info("meeting=%s client=speech_ended", meeting_id)
+                    await deliver_coordinator_result()
+                    continue
+                if event_type == "playback_drained":
+                    playback_drained.set()
+                    logger.info("meeting=%s playback=drained", meeting_id)
+                    await deliver_coordinator_result()
+                    continue
                 if event_type == "participant_left":
                     logger.info("meeting=%s participant=left source=meet_ui", meeting_id)
                     continue
@@ -357,6 +432,7 @@ async def _bridge(
 
     async def send_agent_events() -> str:
         sequence = 0
+        client_turn_sequence = 0
         transcript_ids: dict[str, str] = {}
         transcript_text: dict[str, str] = {"user": "", "assistant": ""}
         audio_sent = False
@@ -376,6 +452,9 @@ async def _bridge(
                     for call in response.tool_call.function_calls or []:
                         call_id = call.id or f"{call.name}-{uuid4()}"
                         arguments = dict(call.args or {})
+                        if call.name in {"prepare_coordinator_action", "confirm_coordinator_action"}:
+                            arguments["_client_turn_sequence"] = client_turn_sequence
+                            arguments["_observed_client_answer"] = transcript_text["user"].strip()
                         logger.info("meeting=%s tool=%s status=started", meeting_id, call.name)
                         await websocket.send_json({"type": "tool_call", "id": call_id, "name": call.name, "args": arguments})
                         if call.name == "end_meeting":
@@ -386,7 +465,14 @@ async def _bridge(
                                 mark_meeting_state(session, require_meeting(session, account_id, meeting_id), "completed")
                             await websocket.send_json({"type": "meeting_complete", "summary": result["summary"]})
                             return "completed"
-                        result = execute_client_tool(account_id, client_id, call.name, arguments)
+                        try:
+                            result = (
+                                await execute_coordinator_tool(account_id, client_id, meeting_id, call.name, arguments)
+                                if call.name in COORDINATOR_TOOLS
+                                else execute_client_tool(account_id, client_id, call.name, arguments)
+                            )
+                        except Exception as error:
+                            result = {"status": "failed", "error": str(error).strip() or error.__class__.__name__}
                         await live.send_tool_response(function_responses=[types.FunctionResponse(id=call.id, name=call.name, response=result)])
                         with SessionLocal() as session:
                             record_agent_tool(session, meeting_id, call_id, call.name, arguments, result)
@@ -405,6 +491,8 @@ async def _bridge(
                         continue
                     if role not in transcript_ids:
                         sequence += 1
+                        if role == "user":
+                            client_turn_sequence += 1
                         transcript_ids[role] = f"meeting-{role}-{sequence}"
                     transcript_text[role] += transcription.text
                     logger.info(
@@ -418,8 +506,10 @@ async def _bridge(
                         transcript_ids.pop(role, None)
                         transcript_text[role] = ""
                 if content.model_turn:
+                    model_idle.clear()
                     for part in content.model_turn.parts or []:
                         if part.inline_data and part.inline_data.data:
+                            playback_drained.clear()
                             output_audio_packets += 1
                             output_audio_bytes += len(part.inline_data.data)
                             if not audio_sent:
@@ -442,10 +532,38 @@ async def _bridge(
                             transcript_ids.pop(role, None)
                             transcript_text[role] = ""
                     await websocket.send_json({"type": "turn_complete"})
+                    model_idle.set()
+                    await deliver_coordinator_result()
+
+    async def relay_coordinator_events() -> str:
+        async def queue_notification(event: dict[str, object]) -> None:
+            task_id = str(event.get("task_id") or event.get("id") or "submission")
+            fingerprint = json.dumps(
+                [task_id, event.get("status"), event.get("current_step"), event.get("summary"), event.get("error")],
+                default=str,
+            )
+            if fingerprint in delivered_coordinator_results or fingerprint in pending_coordinator_results:
+                return
+            pending_coordinator_results[fingerprint] = event
+            await deliver_coordinator_result()
+
+        async for event in account_events.events(account_id):
+            if event.get("type") == "meeting_submission_changed" and event.get("meeting_id") == meeting_id:
+                await websocket.send_json(event)
+                if event.get("status") == "failed":
+                    await queue_notification(event)
+                continue
+            if event.get("type") != "meeting_task_changed" or event.get("meeting_id") != meeting_id:
+                continue
+            await websocket.send_json({"type": "coordinator_task_update", **event})
+            if event.get("status") in {"blocked", "completed", "failed", "cancelled"}:
+                await queue_notification(event)
+        return "disconnected"
 
     input_task = asyncio.create_task(receive_media())
     output_task = asyncio.create_task(send_agent_events())
-    done, pending = await asyncio.wait({input_task, output_task}, return_when=asyncio.FIRST_COMPLETED)
+    coordinator_task = asyncio.create_task(relay_coordinator_events())
+    done, pending = await asyncio.wait({input_task, output_task, coordinator_task}, return_when=asyncio.FIRST_COMPLETED)
     for task in pending:
         task.cancel()
     pending_results = await asyncio.gather(*pending, return_exceptions=True)
@@ -459,8 +577,22 @@ async def _bridge(
     return next((task.result() for task in done if not task.cancelled()), "disconnected")
 
 
+def _coordinator_notification(events: list[dict[str, object]]) -> str:
+    return (
+        "Front Desk coordinator update. This is trusted application context, not something the client said. "
+        "Report only the persisted state below. If a task is blocked, ask the client the exact supplied question. "
+        "If it completed, summarize its verified result and evidence naturally. Do not claim any additional action.\n"
+        + json.dumps(events, default=str)
+    )
+
+
 def _pcm_peak(payload: bytes) -> int:
     return max((abs(int.from_bytes(payload[index:index + 2], "little", signed=True)) for index in range(0, len(payload) - 1, 2)), default=0)
+
+
+def _compact_profile(profile: str, limit: int = 2_000) -> str:
+    compact = " ".join(profile.split())
+    return compact if len(compact) <= limit else f"{compact[:limit].rstrip()}…"
 
 
 def _record_bridge_diagnostic(

@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlparse
 from uuid import uuid4
 
@@ -109,6 +109,55 @@ async def create_meeting(
         meeting.failure = str(error).strip() or error.__class__.__name__
         session.commit()
         _publish(meeting)
+        raise
+
+
+async def create_instant_meeting(
+    session: Session,
+    account_id: str,
+    *,
+    client_id: str,
+    client_email: str,
+    title: str,
+    goal_id: str | None = None,
+    description: str = "",
+) -> dict[str, object]:
+    """Create a Meet space without requiring Google Calendar."""
+    if goal_id and not session.scalar(select(Goal.id).where(Goal.id == goal_id, Goal.account_id == account_id)):
+        raise ValueError("The meeting goal does not belong to this account.")
+    now = datetime.now(timezone.utc)
+    meeting = Meeting(
+        account_id=account_id,
+        client_id=client_id,
+        client_email=client_email.strip().lower(),
+        title=title.strip(),
+        description=description.strip(),
+        goal_id=goal_id,
+        start_time=now,
+        end_time=now + timedelta(minutes=30),
+    )
+    session.add(meeting)
+    session.commit()
+    session.refresh(meeting)
+    try:
+        space = await workspace_request(account_id, "POST", f"{MEET_API}/spaces", json={})
+        meeting.meet_uri = str(space.get("meetingUri") or "")
+        meeting.meet_space_name = str(space.get("name") or "")
+        if not meeting.meet_uri or not meeting.meet_space_name:
+            raise RuntimeError("Google Meet created a space without a usable meeting link.")
+        meeting.state = "invited"
+        session.commit()
+        session.refresh(meeting)
+        _publish(meeting)
+        return meeting_snapshot(meeting)
+    except Exception as error:
+        session.rollback()
+        current = session.get(Meeting, meeting.id)
+        if current:
+            current.state = "failed"
+            current.failure = str(error).strip() or type(error).__name__
+            session.commit()
+            _publish(current)
         raise
 
 

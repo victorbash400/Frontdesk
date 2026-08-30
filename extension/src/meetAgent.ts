@@ -1,4 +1,3 @@
-import { pcmPacket, resampleMono } from './audioPcm';
 import { AGENT_EARS_NAME, isAudioDeviceLabel } from './agentAudioDevices';
 import { AGENT_MICROPHONE_NAME, isAgentMicrophoneLabel } from './agentMicrophone';
 
@@ -81,6 +80,14 @@ async function start(config: MeetWorkerConfig): Promise<void> {
       return;
     }
     const message = JSON.parse(String(event.data)) as { type?: string };
+    if (message.type === 'interrupted') {
+      audio.interrupt();
+      return;
+    }
+    if (message.type === 'turn_complete') {
+      audio.turnComplete();
+      return;
+    }
     if (message.type === 'meeting_complete' || message.type === 'error')
       controls.leave();
   });
@@ -165,22 +172,45 @@ function base64ToBytes(value: string): Uint8Array {
 }
 
 class MeetAudioBridge {
-  private readonly context = new AudioContext({ sampleRate: PLAYBACK_RATE });
+  private readonly context = new AudioContext();
+  private readonly playbackGain = this.context.createGain();
+  private playbackNode?: AudioWorkletNode;
   private socket?: WorkerSocket;
   private microphoneDeviceId?: string;
   private captureSource?: MediaStreamAudioSourceNode;
-  private captureProcessor?: ScriptProcessorNode;
+  private captureProcessor?: AudioWorkletNode;
   private captureSink?: GainNode;
   private capturePacketCount = 0;
-  private capturePeak = 0;
+  private captureRms = 0;
   private playbackPacketCount = 0;
-  private playbackTime = 0;
+  private playbackDrained = true;
+  private participantPresent = false;
+  private speechActive = false;
+  private speechEndTimer?: number;
+  private fadeTimer?: number;
+
+  constructor() {
+    this.playbackGain.connect(this.context.destination);
+  }
 
   connect(socket: WorkerSocket): void {
     this.socket = socket;
   }
 
   async installDevices(): Promise<void> {
+    const relay = ensureRelayElement();
+    const inputWorklet = relay.dataset.audioInputWorklet;
+    const outputWorklet = relay.dataset.audioOutputWorklet;
+    if (!inputWorklet || !outputWorklet)
+      throw new Error('Front Desk audio worklets are unavailable. Reload the extension.');
+    await this.context.audioWorklet.addModule(inputWorklet);
+    await this.context.audioWorklet.addModule(outputWorklet);
+    this.playbackNode = new AudioWorkletNode(this.context, 'front-desk-audio-output');
+    this.playbackNode.connect(this.playbackGain);
+    this.playbackNode.port.onmessage = ({ data }: MessageEvent<{ type?: string }>) => {
+      if (data.type === 'drained')
+        this.reportPlaybackDrained();
+    };
     const devices = await navigator.mediaDevices.enumerateDevices();
     const microphone = devices.find(device => device.kind === 'audioinput' && isAgentMicrophoneLabel(device.label));
     const writer = devices.find(device => device.kind === 'audiooutput' && isAgentMicrophoneLabel(device.label));
@@ -225,10 +255,10 @@ class MeetAudioBridge {
 
   private captureInput(stream: MediaStream): void {
     const source = this.context.createMediaStreamSource(stream);
-    const processor = this.context.createScriptProcessor(2048, 2, 1);
+    const processor = new AudioWorkletNode(this.context, 'front-desk-audio-input');
     const silentSink = this.context.createGain();
     silentSink.gain.value = 0;
-    processor.onaudioprocess = event => this.processAudio(event.inputBuffer);
+    processor.port.onmessage = ({ data }: MessageEvent<ArrayBuffer>) => this.processAudio(new Int16Array(data));
     source.connect(processor);
     processor.connect(silentSink);
     silentSink.connect(this.context.destination);
@@ -237,29 +267,23 @@ class MeetAudioBridge {
     this.captureSink = silentSink;
   }
 
-  private processAudio(buffer: AudioBuffer): void {
-    if (this.socket?.readyState !== WebSocket.OPEN || !buffer.numberOfChannels)
+  private processAudio(samples: Int16Array): void {
+    if (this.socket?.readyState !== WebSocket.OPEN)
       return;
-    const mono = new Float32Array(buffer.length);
-    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-      const input = buffer.getChannelData(channel);
-      for (let index = 0; index < mono.length; index++)
-        mono[index] += input[index] / buffer.numberOfChannels;
-    }
-    const samples = resampleMono(mono, buffer.sampleRate, CAPTURE_RATE);
     this.capturePacketCount += 1;
-    const peak = pcmPeak(samples);
-    this.capturePeak = Math.max(this.capturePeak, peak);
-    document.documentElement.dataset.frontDeskAudioPeak = String(peak);
-    this.socket.send(pcmPacket(AUDIO_CHANNEL, samples));
+    const rms = pcmRms(samples);
+    this.captureRms = Math.max(this.captureRms, rms);
+    document.documentElement.dataset.frontDeskAudioPeak = String(Math.round(rms * 0x7fff));
+    this.socket.send(int16Packet(AUDIO_CHANNEL, samples));
+    this.detectClientSpeech(rms);
     if (this.capturePacketCount === 1 || this.capturePacketCount % 100 === 0) {
       this.socket.diagnostic('capture.audio_summary', {
         packets: this.capturePacketCount,
         samples: samples.length,
-        sourceRate: buffer.sampleRate,
-        peak: this.capturePeak,
+        sourceRate: CAPTURE_RATE,
+        rms: this.captureRms,
       });
-      this.capturePeak = 0;
+      this.captureRms = 0;
     }
   }
 
@@ -306,19 +330,69 @@ class MeetAudioBridge {
         contextState: this.context.state,
       });
     }
-    const samples = new Float32Array(Math.floor(bytes.byteLength / 2));
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    for (let index = 0; index < samples.length; index++)
-      samples[index] = view.getInt16(index * 2, true) / 0x8000;
-    const buffer = this.context.createBuffer(1, samples.length, PLAYBACK_RATE);
-    buffer.copyToChannel(samples, 0);
-    const source = this.context.createBufferSource();
-    source.buffer = buffer;
-    source.connect(this.context.destination);
+    this.playbackDrained = false;
+    const pcm = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    this.playbackNode?.port.postMessage({ type: 'audio', pcm }, [pcm]);
+  }
+
+  turnComplete(): void {
+    this.playbackNode?.port.postMessage({ type: 'turn_complete' });
+  }
+
+  interrupt(): void {
     const now = this.context.currentTime;
-    this.playbackTime = Math.max(now + 0.02, this.playbackTime);
-    source.start(this.playbackTime);
-    this.playbackTime += buffer.duration;
+    this.playbackGain.gain.cancelScheduledValues(now);
+    this.playbackGain.gain.setValueAtTime(this.playbackGain.gain.value, now);
+    this.playbackGain.gain.linearRampToValueAtTime(0, now + 0.045);
+    this.socket?.diagnostic('playback.interrupted', { source: 'gemini' });
+    if (this.fadeTimer !== undefined)
+      window.clearTimeout(this.fadeTimer);
+    this.fadeTimer = window.setTimeout(() => {
+      this.playbackNode?.port.postMessage({ type: 'reset' });
+      this.playbackGain.gain.cancelScheduledValues(this.context.currentTime);
+      this.playbackGain.gain.setValueAtTime(1, this.context.currentTime);
+      this.fadeTimer = undefined;
+      this.reportPlaybackDrained();
+    }, 45);
+  }
+
+  setParticipantPresent(present: boolean): void {
+    this.participantPresent = present;
+    if (!present && this.speechActive) {
+      this.speechActive = false;
+      if (this.speechEndTimer !== undefined)
+        window.clearTimeout(this.speechEndTimer);
+      this.speechEndTimer = undefined;
+      this.send({ type: 'speech_ended' });
+    }
+  }
+
+  private detectClientSpeech(rms: number): void {
+    if (!this.participantPresent)
+      return;
+    if (rms > 0.018) {
+      if (this.speechEndTimer !== undefined)
+        window.clearTimeout(this.speechEndTimer);
+      this.speechEndTimer = undefined;
+      if (!this.speechActive) {
+        this.speechActive = true;
+        this.send({ type: 'speech_started' });
+      }
+      return;
+    }
+    if (this.speechActive && this.speechEndTimer === undefined)
+      this.speechEndTimer = window.setTimeout(() => {
+        this.speechActive = false;
+        this.speechEndTimer = undefined;
+        this.send({ type: 'speech_ended' });
+      }, 500);
+  }
+
+  private reportPlaybackDrained(): void {
+    if (this.playbackDrained)
+      return;
+    this.playbackDrained = true;
+    this.send({ type: 'playback_drained' });
   }
 
   activate(): void {
@@ -339,11 +413,18 @@ class MeetAudioBridge {
   }
 }
 
-function pcmPeak(samples: Float32Array): number {
-  let peak = 0;
+function pcmRms(samples: Int16Array): number {
+  let energy = 0;
   for (const sample of samples)
-    peak = Math.max(peak, Math.round(Math.abs(sample) * 0x7fff));
-  return peak;
+    energy += (sample / 0x8000) ** 2;
+  return Math.sqrt(energy / Math.max(1, samples.length));
+}
+
+function int16Packet(channel: number, samples: Int16Array): Uint8Array {
+  const packet = new Uint8Array(1 + samples.byteLength);
+  packet[0] = channel;
+  packet.set(new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength), 1);
+  return packet;
 }
 
 function installPeerVideoCapture(audio: MeetAudioBridge): void {
@@ -402,6 +483,7 @@ class MeetControls {
     const hasClient = participant.count >= 2;
     if (hasClient !== this.participantReported) {
       this.participantReported = hasClient;
+      this.audio.setParticipantPresent(hasClient);
       this.socket.diagnostic('controls.participant_state', { present: hasClient, ...participant });
       if (this.socket.readyState === WebSocket.OPEN)
         this.socket.send(JSON.stringify({ type: hasClient ? 'participant_arrived' : 'participant_left' }));

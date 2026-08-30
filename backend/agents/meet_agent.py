@@ -8,19 +8,21 @@ MEET_AGENT_INSTRUCTION = """You are Front Desk's dedicated meeting agent. You ar
 
 Remain silent until the session reports that the client has arrived. Then greet the client briefly, identify yourself as Front Desk, and ask how you can help unless a specific meeting purpose already supplies the opening question. Listen carefully and keep spoken replies concise and natural.
 
-At the beginning of the client conversation, call get_client_goals and get_client_documents before giving a substantive resolution. Use those tool results as the authoritative client record, even when an initial snapshot was supplied.
+The meeting context already contains the client's verified identity, compact profile, meeting purpose, and owning goal. Start the conversation from that context without making any startup tool calls. Treat the compact profile as background, not as proof that new work has happened. If the conversation requires deeper records, investigation, or an application action, delegate that exact need to the coordinator. Never claim an action succeeded until a verified coordinator result confirms it. Ask for explicit confirmation immediately before consequential external changes.
 
-Use the supplied client and goal context as background, not as claims that work has happened. Use tools to inspect authoritative state and record confirmed information. Never claim an action succeeded unless a tool result confirms it. Ask for explicit confirmation immediately before consequential external changes. If a request requires work unavailable in this meeting session, state what you will check and create a clear request for the owning Front Desk workflow rather than inventing a result.
+You handle the conversation while Front Desk's coordinator handles application work. Never dispatch work directly from the client's first mention of an action. First call prepare_coordinator_action with the exact bounded instruction and a short natural confirmation question. Ask that returned question and wait for a later client turn. If the client clearly confirms, call confirm_coordinator_action with the pending confirmation ID and the client's exact answer. If the client changes or rejects it, do not dispatch it. This applies especially to cancellation, reinstatement, billing, refunds, messages, tickets, and every customer-data mutation. Keep talking naturally while confirmed work runs. Never claim it succeeded until a verified coordinator result is delivered or inspect_coordinator_task confirms completion. Use list_coordinator_tasks when the relevant task ID is uncertain. If the coordinator asks a question that the client can answer, ask it naturally and pass the answer through answer_coordinator_question. Use steer_coordinator_task or cancel_coordinator_task only when the client changes or stops that exact delegated task. Never repeatedly inspect tasks or poll.
 
 When the issue is resolved, summarize the verified outcome, identify any remaining follow-up, ask whether the client needs anything else, and end only after the client confirms the conversation is finished. Never repeatedly check or poll."""
 
 
 MEET_AGENT_TOOLS = [types.Tool(function_declarations=[
-    types.FunctionDeclaration(name="get_client_goals", description="Read this client's authoritative goals and current work."),
-    types.FunctionDeclaration(name="get_client_documents", description="Read the documents stored inside this client's Front Desk folder."),
-    types.FunctionDeclaration(name="update_goal_board", description="Record a confirmed change in a goal's current situation.", parameters={"type": "object", "properties": {"goal_id": {"type": "string"}, "situation": {"type": "string"}, "expected_version": {"type": "integer"}}, "required": ["goal_id", "situation", "expected_version"]}),
-    types.FunctionDeclaration(name="ask_user", description="Escalate one necessary question to the Front Desk owner.", parameters={"type": "object", "properties": {"goal_id": {"type": "string"}, "question": {"type": "string"}}, "required": ["goal_id", "question"]}),
-    types.FunctionDeclaration(name="send_client_message", description="Record a confirmed follow-up message for this client.", parameters={"type": "object", "properties": {"goal_id": {"type": "string"}, "message": {"type": "string"}}, "required": ["goal_id", "message"]}),
+    types.FunctionDeclaration(name="prepare_coordinator_action", description="Prepare one exact coordinator action without starting work, returning the confirmation question that must be asked to the client.", parameters={"type": "object", "properties": {"instruction": {"type": "string"}, "question": {"type": "string"}}, "required": ["instruction", "question"]}),
+    types.FunctionDeclaration(name="confirm_coordinator_action", description="Start one prepared action only after the client answers its confirmation question in a later turn.", parameters={"type": "object", "properties": {"confirmation_id": {"type": "string"}, "answer": {"type": "string"}}, "required": ["confirmation_id", "answer"]}),
+    types.FunctionDeclaration(name="inspect_coordinator_task", description="Read the exact persisted status, progress, evidence, and verified result of one task delegated by this meeting.", parameters={"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"]}),
+    types.FunctionDeclaration(name="list_coordinator_tasks", description="List the tasks delegated by this exact meeting when the relevant task ID is uncertain."),
+    types.FunctionDeclaration(name="steer_coordinator_task", description="Change one running or blocked task delegated by this meeting.", parameters={"type": "object", "properties": {"task_id": {"type": "string"}, "instruction": {"type": "string"}}, "required": ["task_id", "instruction"]}),
+    types.FunctionDeclaration(name="cancel_coordinator_task", description="Cancel one unfinished task delegated by this meeting when the client asks to stop it.", parameters={"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"]}),
+    types.FunctionDeclaration(name="answer_coordinator_question", description="Give the client's answer to an open question from a coordinator task delegated by this meeting.", parameters={"type": "object", "properties": {"task_id": {"type": "string"}, "answer": {"type": "string"}}, "required": ["task_id", "answer"]}),
     types.FunctionDeclaration(name="end_meeting", description="End the call only after the client confirms the conversation is finished.", parameters={"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]}),
 ])]
 
@@ -29,10 +31,12 @@ MEET_AGENT_TOOLS = [types.Tool(function_declarations=[
 class MeetAgentContext:
     meeting_id: str
     client_id: str
+    client_name: str
+    client_email: str
+    client_profile: str
     title: str
     purpose: str
-    goals: list[dict[str, object]]
-    documents: list[dict[str, object]]
+    goal: dict[str, object] | None
     voice: str
     language: str
 
@@ -41,10 +45,12 @@ def live_config(context: MeetAgentContext, session_handle: str | None = None) ->
     session_context = json.dumps({
         "meeting_id": context.meeting_id,
         "client_id": context.client_id,
+        "client_name": context.client_name,
+        "client_email": context.client_email,
+        "client_profile": context.client_profile,
         "meeting_title": context.title,
         "meeting_purpose": context.purpose,
-        "goals": context.goals,
-        "client_documents": context.documents,
+        "owning_goal": context.goal,
     }, default=str)
     return types.LiveConnectConfig(
         response_modalities=[types.Modality.AUDIO],

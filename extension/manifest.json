@@ -43,7 +43,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["cursor-alt-svgrepo-com.svg"],
+      "resources": ["cursor-alt-svgrepo-com.svg", "lib/audio-input-processor.js", "lib/audio-output-processor.js"],
       "matches": ["<all_urls>"]
     }
   ],

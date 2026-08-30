@@ -28,6 +28,19 @@ chrome.runtime.onMessage.addListener(message => {
 });
 
 function connect(config: RelayIdentity & { socketUrl: string }): void {
+  if (
+    active
+    && active.meetingId === config.meetingId
+    && active.runtimeId === config.runtimeId
+    && active.bridgeId === config.bridgeId
+    && active.tabId === config.tabId
+    && active.socketUrl === config.socketUrl
+    && (active.socket.readyState === WebSocket.CONNECTING || active.socket.readyState === WebSocket.OPEN)
+  ) {
+    if (active.socket.readyState === WebSocket.OPEN)
+      sendIncoming(active, { kind: 'open', tabId: active.tabId });
+    return;
+  }
   if (active)
     active.socket.close(4001, 'Meeting runtime replaced');
   open({ ...config, socket: undefined as never, intentionallyClosed: false, reconnectAttempt: 0 });

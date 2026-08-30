@@ -3,20 +3,24 @@ import asyncio
 import json
 import inspect
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 from agents.meet_agent import MEET_AGENT_INSTRUCTION, MeetAgentContext, live_config
+from agents.goal_planner import GoalPlan, GoalTaskOperation
 from app.database import SessionLocal
+from app.goal_tasks import GoalTaskManager
+from app.models import GoalAssignment, GoalNotification
 from app.config import get_settings
 from app.main import app
-from meetings.agent_session import AgentIdentity, _bridge, _pcm_peak, _register_bridge_and_wait_for_participant, _run_identity_bound_agent, create_agent_ticket, verify_agent_ticket
+from meetings.agent_session import AgentIdentity, _bridge, _coordinator_notification, _pcm_peak, _register_bridge_and_wait_for_participant, _run_identity_bound_agent, create_agent_ticket, verify_agent_ticket
 from meetings.browser_worker import join_meeting
 from meetings.events import decode_pubsub_event
+from meetings.coordinator_tools import execute_coordinator_tool
 from meetings.models import Meeting, MeetingEvent
-from meetings.service import record_agent_tool
+from meetings.service import create_instant_meeting, record_agent_tool
 from meetings.sample import ensure_angeline_sample
 from tools.supervisor_tools import execute_client_tool
 
@@ -70,6 +74,30 @@ def test_create_meeting_invites_client_and_persists_space() -> None:
         assert meeting["id"] in [item["id"] for item in listed.json()]
 
 
+def test_create_instant_meeting_uses_meet_api_without_calendar() -> None:
+    with TestClient(app) as client:
+        account = _account(client, "instant-meet@example.com")
+    calls: list[tuple[str, str, dict[str, object]]] = []
+
+    async def google_request(_account_id: str, method: str, url: str, **kwargs: object) -> dict[str, object]:
+        calls.append((method, url, kwargs))
+        return {"name": "spaces/instant-space", "meetingUri": "https://meet.google.com/abc-defg-hij"}
+
+    with SessionLocal() as session, patch("meetings.service.workspace_request", new=google_request):
+        meeting = asyncio.run(create_instant_meeting(
+            session,
+            account["id"],
+            client_id="client-instant",
+            client_email="client@example.com",
+            title="Immediate support call",
+        ))
+
+    assert meeting["state"] == "invited"
+    assert meeting["calendarEventId"] is None
+    assert meeting["meetUri"] == "https://meet.google.com/abc-defg-hij"
+    assert calls == [("POST", "https://meet.googleapis.com/v2/spaces", {"json": {}})]
+
+
 def test_workspace_participant_event_is_deduplicated_and_wakes_meeting() -> None:
     with TestClient(app) as client:
         account = _account(client, "meet-events@example.com")
@@ -118,18 +146,213 @@ def test_meet_agent_is_conversation_only_and_ticket_is_meeting_scoped() -> None:
     config = live_config(MeetAgentContext(
         meeting_id="meeting-1",
         client_id="client-1",
+        client_name="Victor Bash",
+        client_email="victor@example.com",
+        client_profile="Prefers concise support calls.",
         title="Support call",
         purpose="Resolve login access.",
-        goals=[],
-        documents=[],
+        goal={"id": "goal-1", "text": "Restore access", "status": "active", "situation": "Login blocked"},
         voice="Kore",
         language="English",
     ))
     declarations = [declaration.name for tool in config.tools or [] for declaration in tool.function_declarations or []]
 
     assert "Remain silent until the session reports that the client has arrived" in MEET_AGENT_INSTRUCTION
+    assert "without making any startup tool calls" in MEET_AGENT_INSTRUCTION
+    assert "Victor Bash" in str(config.system_instruction)
     assert "browser" not in " ".join(declarations)
-    assert declarations == ["get_client_goals", "get_client_documents", "update_goal_board", "ask_user", "send_client_message", "end_meeting"]
+    assert declarations == [
+        "prepare_coordinator_action", "confirm_coordinator_action", "inspect_coordinator_task", "list_coordinator_tasks",
+        "steer_coordinator_task", "cancel_coordinator_task", "answer_coordinator_question", "end_meeting",
+    ]
+
+
+def test_coordinator_tasks_are_bound_to_the_exact_meeting() -> None:
+    with TestClient(app) as client:
+        account = _account(client, "meet-coordinator-scope@example.com")
+        with SessionLocal() as session:
+            sample = ensure_angeline_sample(session, account["id"])
+            meetings = [Meeting(
+                account_id=account["id"], client_id=sample["clientId"], goal_id=sample["goalId"],
+                client_email="client@example.com", title=f"Meeting {index}", state="agent_active",
+                meet_uri=f"https://meet.google.com/scope-{index}", start_time=datetime.now(timezone.utc),
+                end_time=datetime.now(timezone.utc) + timedelta(minutes=30),
+            ) for index in range(2)]
+            session.add_all(meetings)
+            session.flush()
+            task = GoalAssignment(
+                goal_id=sample["goalId"], source_meeting_id=meetings[0].id,
+                title="Check the account", instruction="Inspect the customer's account.",
+            )
+            session.add(task)
+            session.commit()
+            first_id, second_id, task_id = meetings[0].id, meetings[1].id, task.id
+
+        allowed = asyncio.run(execute_coordinator_tool(
+            account["id"], sample["clientId"], first_id, "inspect_coordinator_task", {"task_id": task_id},
+        ))
+        rejected = asyncio.run(execute_coordinator_tool(
+            account["id"], sample["clientId"], second_id, "inspect_coordinator_task", {"task_id": task_id},
+        ))
+
+        assert allowed["status"] == "success"
+        assert allowed["task"]["sourceMeetingId"] == first_id
+        assert rejected == {"status": "failed", "error": "That coordinator task does not belong to this meeting."}
+
+
+def test_meeting_delegation_uses_the_persisted_goal_and_meeting_identity() -> None:
+    with TestClient(app) as client:
+        account = _account(client, "meet-coordinator-delegate@example.com")
+        with SessionLocal() as session:
+            sample = ensure_angeline_sample(session, account["id"])
+            meeting = Meeting(
+                account_id=account["id"], client_id=sample["clientId"], goal_id=sample["goalId"],
+                client_email="client@example.com", title="Delegation", state="agent_active",
+                meet_uri="https://meet.google.com/delegation-test", start_time=datetime.now(timezone.utc),
+                end_time=datetime.now(timezone.utc) + timedelta(minutes=30),
+            )
+            session.add(meeting)
+            session.commit()
+            meeting_id = meeting.id
+
+        delegate = AsyncMock(return_value={"status": "running", "task_ids": ["task-1"]})
+        with patch("meetings.coordinator_tools.goal_tasks.delegate_from_meeting", new=delegate):
+            prepared = asyncio.run(execute_coordinator_tool(
+                account["id"], sample["clientId"], meeting_id, "prepare_coordinator_action",
+                {
+                    "instruction": "Check the exact payment record and report verified evidence.",
+                    "question": "Would you like me to check that payment record now?",
+                    "_client_turn_sequence": 1,
+                },
+            ))
+            premature = asyncio.run(execute_coordinator_tool(
+                account["id"], sample["clientId"], meeting_id, "confirm_coordinator_action",
+                {"confirmation_id": prepared["confirmation_id"], "answer": "Yes, please check it now."},
+            ))
+            assert premature == {"status": "failed", "error": "Wait for the client to answer the confirmation question before starting work."}
+            delegate.assert_not_awaited()
+            result = asyncio.run(execute_coordinator_tool(
+                account["id"], sample["clientId"], meeting_id, "confirm_coordinator_action",
+                {
+                    "confirmation_id": prepared["confirmation_id"],
+                    "answer": "Yes, please check it now.",
+                    "_client_turn_sequence": 2,
+                    "_observed_client_answer": "Yes, please check it now.",
+                },
+            ))
+
+        assert result == {"status": "running", "task_ids": ["task-1"]}
+        delegated_instruction = delegate.await_args.args[3]
+        assert "The client explicitly confirmed this action" in delegated_instruction
+        assert "Check the exact payment record" in delegated_instruction
+
+
+def test_meeting_delegation_persists_an_independent_auxiliary_task() -> None:
+    with TestClient(app) as client:
+        account = _account(client, "meet-coordinator-persistence@example.com")
+        with SessionLocal() as session:
+            sample = ensure_angeline_sample(session, account["id"])
+
+        manager = GoalTaskManager()
+        plan = GoalPlan(operations=[GoalTaskOperation(
+            action="create",
+            key="inspect_account",
+            title="Inspect account assignment",
+            instruction="Inspect the exact account assignment and return verified evidence.",
+            expected_outputs=["Verified account assignment"],
+        )])
+        planner_started = asyncio.Event()
+        release_planner = asyncio.Event()
+
+        async def delayed_plan(*_: object, **__: object) -> GoalPlan:
+            planner_started.set()
+            await release_planner.wait()
+            return plan
+
+        async def exercise() -> dict[str, object]:
+            result = await manager.delegate_from_meeting(
+                account["id"], sample["goalId"], "meeting-persisted",
+                "Inspect the exact account assignment.",
+            )
+            assert result["status"] == "accepted"
+            await planner_started.wait()
+            assert manager.meeting_submissions(account["id"], "meeting-persisted")[0]["status"] == "received"
+            release_planner.set()
+            await manager._meeting_submission_workers[str(result["submission_id"])]
+            return result
+
+        with (
+            patch("meetings.coordinator_planner.plan_goal", new=delayed_plan),
+            patch.object(manager, "_run_delegated_assignments", new=AsyncMock()),
+        ):
+            result = asyncio.run(exercise())
+
+        assert result["status"] == "accepted"
+        submission = manager.meeting_submissions(account["id"], "meeting-persisted")[0]
+        assert submission["status"] == "planned"
+        with SessionLocal() as session:
+            task = session.get(GoalAssignment, submission["task_id"])
+            assert task is not None
+            assert task.auxiliary is True
+            assert task.source_meeting_id == "meeting-persisted"
+            assert task.goal_id == sample["goalId"]
+
+
+def test_coordinator_notification_contains_only_persisted_task_state() -> None:
+    message = _coordinator_notification([{
+        "meeting_id": "meeting-1", "task_id": "task-1", "status": "completed",
+        "summary": "Verified the account assignment.", "evidence": {"record": "account-7"},
+    }])
+
+    assert "trusted application context" in message
+    assert "Verified the account assignment." in message
+    assert "account-7" in message
+
+
+def test_client_answer_resumes_only_the_question_from_this_meeting_task() -> None:
+    with TestClient(app) as client:
+        account = _account(client, "meet-coordinator-answer@example.com")
+        with SessionLocal() as session:
+            sample = ensure_angeline_sample(session, account["id"])
+            meeting = Meeting(
+                account_id=account["id"], client_id=sample["clientId"], goal_id=sample["goalId"],
+                client_email="client@example.com", title="Answer routing", state="agent_active",
+                meet_uri="https://meet.google.com/answer-routing", start_time=datetime.now(timezone.utc),
+                end_time=datetime.now(timezone.utc) + timedelta(minutes=30),
+            )
+            session.add(meeting)
+            session.flush()
+            task = GoalAssignment(
+                goal_id=sample["goalId"], source_meeting_id=meeting.id, auxiliary=True,
+                title="Check order", instruction="Check the exact order.", status="blocked", phase="blocked",
+            )
+            session.add(task)
+            session.flush()
+            matching = GoalNotification(
+                goal_id=sample["goalId"], assignment_id=task.id, client_id=sample["clientId"],
+                kind="clarification", message="What is the order number?",
+            )
+            unrelated = GoalNotification(
+                goal_id=sample["goalId"], client_id=sample["clientId"],
+                kind="clarification", message="Unrelated owner question",
+            )
+            session.add_all([matching, unrelated])
+            session.commit()
+            meeting_id, task_id, matching_id, unrelated_id = meeting.id, task.id, matching.id, unrelated.id
+
+        steer = AsyncMock(return_value={"status": "steered", "task_id": task_id})
+        with patch("meetings.coordinator_tools.goal_tasks.steer_task", new=steer):
+            result = asyncio.run(execute_coordinator_tool(
+                account["id"], sample["clientId"], meeting_id, "answer_coordinator_question",
+                {"task_id": task_id, "answer": "AQL-2048"},
+            ))
+
+        assert result["status"] == "answered"
+        with SessionLocal() as session:
+            assert session.get(GoalNotification, matching_id).status == "answered"
+            assert session.get(GoalNotification, unrelated_id).status == "open"
+        steer.assert_awaited_once()
+
 
 def test_replacement_meeting_ticket_revokes_previous_ticket() -> None:
     with TestClient(app) as client:
