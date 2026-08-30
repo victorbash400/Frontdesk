@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   playwright-core@1.63.0-alpha-2026-08-05:
-    hash: f20e5a8f36a275b51fd880dc2b006a7a80edef87afaf227e7823bb6dcd9a7905
+    hash: 4a91e8c722a80ac4c1ec0668e9192fab1121d47e232c960e231099dc85a45e81
     path: ../../patches/playwright-core@1.63.0-alpha-2026-08-05.patch
 
 importers:
@@ -44,15 +44,15 @@ snapshots:
   '@playwright/mcp@0.0.79':
     dependencies:
       playwright: 1.63.0-alpha-2026-08-05
-      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=f20e5a8f36a275b51fd880dc2b006a7a80edef87afaf227e7823bb6dcd9a7905)
+      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=4a91e8c722a80ac4c1ec0668e9192fab1121d47e232c960e231099dc85a45e81)
 
   fsevents@2.3.2:
     optional: true
 
-  playwright-core@1.63.0-alpha-2026-08-05(patch_hash=f20e5a8f36a275b51fd880dc2b006a7a80edef87afaf227e7823bb6dcd9a7905): {}
+  playwright-core@1.63.0-alpha-2026-08-05(patch_hash=4a91e8c722a80ac4c1ec0668e9192fab1121d47e232c960e231099dc85a45e81): {}
 
   playwright@1.63.0-alpha-2026-08-05:
     dependencies:
-      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=f20e5a8f36a275b51fd880dc2b006a7a80edef87afaf227e7823bb6dcd9a7905)
+      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=4a91e8c722a80ac4c1ec0668e9192fab1121d47e232c960e231099dc85a45e81)
     optionalDependencies:
       fsevents: 2.3.2
