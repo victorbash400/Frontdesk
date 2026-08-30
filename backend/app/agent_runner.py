@@ -64,6 +64,7 @@ class AgentEngineRunner:
                         **session.state,
                         "temp:front_desk_run_id": run_id,
                         "temp:front_desk_run_ticket": ticket,
+                        "temp:front_desk_tool_relay_url": get_settings().public_api_url.rstrip("/"),
                     },
                 }
                 if run_config is not None:

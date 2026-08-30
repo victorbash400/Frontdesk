@@ -26,7 +26,7 @@ class RunManifest(BaseModel):
 
 
 async def relay_request(context, operation: str, payload: dict[str, Any]) -> dict[str, Any]:
-    origin = os.environ["FRONT_DESK_TOOL_RELAY_URL"].rstrip("/")
+    origin = str(context.state.get("temp:front_desk_tool_relay_url") or os.environ["FRONT_DESK_TOOL_RELAY_URL"]).rstrip("/")
     parsed = urlparse(origin)
     if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise RuntimeError("Agent Engine requires an HTTPS tool relay URL.")

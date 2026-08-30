@@ -16,6 +16,7 @@ from pydantic import PrivateAttr
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from agent_runtime.agent import configure_model, create_agent
 from agent_runtime.relay import MANIFEST_STATE, RunManifest, declarations
+from agent_runtime import relay
 
 
 def manifest(tools=None):
@@ -100,3 +101,19 @@ def test_agent_engine_application_can_be_serialized_without_backend_imports() ->
         restored = cloudpickle.loads(packaged)
     assert isinstance(restored, agent_engines.AdkApp)
     assert len(packaged) < 100_000
+
+
+def test_scoped_run_can_select_a_tagged_https_tool_relay() -> None:
+    context = SimpleNamespace(state={
+        "temp:front_desk_run_id": "run",
+        "temp:front_desk_run_ticket": "ticket",
+        "temp:front_desk_tool_relay_url": "https://candidate---front-desk-api.example.run.app",
+    })
+    response = SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"ok": True})
+    client = AsyncMock()
+    client.__aenter__.return_value.post.return_value = response
+    with patch("agent_runtime.relay.httpx.AsyncClient", return_value=client):
+        assert asyncio.run(relay.relay_request(context, "manifest", {})) == {"ok": True}
+    assert client.__aenter__.return_value.post.await_args.args[0].startswith(
+        "https://candidate---front-desk-api.example.run.app/internal/agent-runs/"
+    )

@@ -35,6 +35,7 @@ def test_cloud_runner_reuses_durable_remote_session_and_executes_real_tools() ->
             assert parameters["session_id"] == "remote-session"
             self.calls += 1
             state = parameters["state_delta"]
+            assert state["temp:front_desk_tool_relay_url"] == "http://127.0.0.1:8000"
             if self.calls == 2:
                 assert state["remembered"] == "value-1"
             run_id = state["temp:front_desk_run_id"]
