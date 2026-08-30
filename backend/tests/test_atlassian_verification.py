@@ -23,6 +23,21 @@ def test_verification_accepts_real_mcp_results() -> None:
     session.call_tool.side_effect = [result('[{"id":"site-1"}]'), result('{}'), result('{}')]
     asyncio.run(_verify_atlassian_tools(session, TOOLS))
     assert session.call_tool.await_count == 3
+    session.call_tool.assert_awaited_with("searchJiraIssuesUsingJql", {
+        "cloudId": "site-1",
+        "jql": "created >= -30d ORDER BY created DESC",
+        "maxResults": 1,
+    })
+
+
+def test_verification_accepts_an_empty_bounded_search() -> None:
+    session = AsyncMock()
+    session.call_tool.side_effect = [
+        result('[{"id":"site-1"}]'), result('{"values":[]}'),
+        result('{"issues":[],"isLast":true}'),
+    ]
+    asyncio.run(_verify_atlassian_tools(session, TOOLS))
+    assert session.call_tool.await_count == 3
 
 
 @pytest.mark.parametrize("failed_call", [0, 1, 2])

@@ -394,7 +394,7 @@ async def _verify_atlassian_tools(mcp_session: ClientSession, tool_names: set[st
         raise RuntimeError(_tool_text(projects) or "Atlassian could not list Jira projects.")
     search = await mcp_session.call_tool("searchJiraIssuesUsingJql", {
         "cloudId": cloud_id,
-        "jql": "ORDER BY created DESC",
+        "jql": "created >= -30d ORDER BY created DESC",
         "maxResults": 1,
     })
     if search.isError:
