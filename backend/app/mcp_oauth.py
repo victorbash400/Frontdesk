@@ -383,19 +383,21 @@ async def _verify_atlassian_tools(mcp_session: ClientSession, tool_names: set[st
         raise RuntimeError(f"Atlassian did not provide required tools: {', '.join(sorted(missing))}.")
 
     resources = await mcp_session.call_tool("getAccessibleAtlassianResources", {})
+    if resources.isError:
+        raise RuntimeError(_tool_text(resources) or "Atlassian could not list accessible sites.")
     cloud_id = _first_atlassian_cloud_id(_tool_text(resources))
     projects = await mcp_session.call_tool("getVisibleJiraProjects", {
         "cloudId": cloud_id,
         "maxResults": 1,
     })
-    if projects.is_error:
+    if projects.isError:
         raise RuntimeError(_tool_text(projects) or "Atlassian could not list Jira projects.")
     search = await mcp_session.call_tool("searchJiraIssuesUsingJql", {
         "cloudId": cloud_id,
         "jql": "ORDER BY created DESC",
         "maxResults": 1,
     })
-    if search.is_error:
+    if search.isError:
         raise RuntimeError(_tool_text(search) or "Atlassian could not search Jira.")
 
 
