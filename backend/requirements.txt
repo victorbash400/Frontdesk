@@ -6,6 +6,7 @@ pydantic-settings
 httpx
 google-adk[mcp]
 google-cloud-aiplatform[agent_engines,adk]
+cloudpickle
 google-genai
 google-auth
 requests

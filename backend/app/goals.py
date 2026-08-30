@@ -8,6 +8,15 @@ from sqlalchemy.orm import Session
 
 from .models import Goal, GoalActivity, GoalAssignment, GoalAutomation, GoalBrowserPreview, GoalNotification, GoalTaskUpdate
 from .event_stream import account_events
+from .plugin_service import PLUGIN_IDS
+
+
+def validate_goal_plugin_ids(plugin_ids: list[str]) -> list[str]:
+    normalized = list(dict.fromkeys(plugin_ids))
+    unknown = [plugin_id for plugin_id in normalized if plugin_id not in PLUGIN_IDS]
+    if unknown:
+        raise HTTPException(422, f"Unknown plugin IDs: {', '.join(unknown)}")
+    return normalized
 
 
 def list_goals(session: Session, account_id: str, client_id: str | None = None) -> list[dict[str, object]]:
@@ -32,7 +41,7 @@ def create_goal(
         text=text.strip(),
         situation="",
         skill_ids=json.dumps(skill_ids),
-        plugin_ids=json.dumps(plugin_ids),
+        plugin_ids=json.dumps(validate_goal_plugin_ids(plugin_ids)),
     )
     session.add(goal)
     session.flush()
@@ -65,7 +74,7 @@ def update_goal(
     if skill_ids is not None:
         goal.skill_ids = json.dumps(skill_ids)
     if plugin_ids is not None:
-        goal.plugin_ids = json.dumps(plugin_ids)
+        goal.plugin_ids = json.dumps(validate_goal_plugin_ids(plugin_ids))
     if status is not None:
         goal.status = status
         goal.completed_at = datetime.now(timezone.utc) if status == "completed" else None

@@ -22,6 +22,7 @@ from app.event_stream import account_events
 from app.goal_tool_ui import describe_goal_tool
 from app.goals import create_notification, require_goal
 from app.models import Goal, GoalActivity, GoalAssignment, GoalBrowserPreview, GoalTaskUpdate, PluginInstallation, Skill
+from app.plugin_service import PLUGIN_IDS
 from app.skills import list_skills
 from app.mailboxes import titan_tools
 from agents.goal_planner import create_goal_planner_runner, plan_goal
@@ -483,7 +484,7 @@ class GoalTaskManager:
             persisted_goal = require_goal(session, account_id, goal.id)
             if persisted_goal.status != "active":
                 raise RuntimeError("The goal changed while its plan was being prepared. Reload its current state before revising it.")
-            selected_plugins = set(json.loads(persisted_goal.plugin_ids))
+            selected_plugins = set(json.loads(persisted_goal.plugin_ids)) & set(PLUGIN_IDS)
             for operation in plan.operations:
                 unknown_skills = [skill_id for skill_id in operation.skill_ids if skill_id not in available_skill_ids]
                 if unknown_skills:
@@ -590,6 +591,15 @@ class GoalTaskManager:
 
     async def _preflight(self, account_id: str, goal: Goal, assignment: GoalAssignment) -> tuple[list[Any], list[Any]]:
         plugin_ids = list(dict.fromkeys(json.loads(goal.plugin_ids)))
+        unknown = [plugin_id for plugin_id in plugin_ids if plugin_id not in PLUGIN_IDS]
+        if unknown:
+            plugin_ids = [plugin_id for plugin_id in plugin_ids if plugin_id in PLUGIN_IDS]
+            with SessionLocal() as session:
+                persisted_goal = require_goal(session, account_id, goal.id)
+                persisted_goal.plugin_ids = json.dumps(plugin_ids)
+                session.commit()
+            goal.plugin_ids = json.dumps(plugin_ids)
+            logger.warning("goal=%s plugins=legacy_unknown_removed ids=%s", goal.id, unknown)
         titan_functions = titan_tools(account_id)
         with SessionLocal() as session:
             installed = set(session.scalars(select(PluginInstallation.plugin_id).where(PluginInstallation.account_id == account_id)))

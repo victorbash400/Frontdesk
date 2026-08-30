@@ -468,7 +468,6 @@ def test_goal_board_and_scheduled_run_dispatch() -> None:
         assert goal["situation"] == ""
         assert goal["runState"] == "idle"
         assert client.get("/api/notifications", headers=headers, params={"client_id": "client-acme"}).json() == []
-
         automation = client.post(
             f"/api/goals/{goal['id']}/automations",
             headers=headers,
@@ -495,6 +494,49 @@ def test_goal_board_and_scheduled_run_dispatch() -> None:
         assert removed.json() == {"deleted": True}
         assert client.get("/api/goals", headers=headers, params={"client_id": "client-acme"}).json() == []
         assert client.get("/api/notifications", headers=headers, params={"client_id": "client-acme"}).json() == []
+
+
+def test_goal_rejects_unknown_plugin_ids() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "unknown-plugin@example.com", "Unknown Plugin")
+        headers = account_headers(account["id"])
+        created = client.post("/api/goals", headers=headers, json={
+            "client_id": "client-unknown-plugin",
+            "text": "Tell me the current time.",
+            "skill_ids": [],
+            "plugin_ids": ["time"],
+        })
+        assert created.status_code == 422
+        assert created.json()["detail"] == "Unknown plugin IDs: time"
+
+
+def test_goal_preflight_repairs_legacy_unknown_plugin_ids(caplog) -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "legacy-plugin@example.com", "Legacy Plugin")
+        goal_payload = client.post("/api/goals", headers=account_headers(account["id"]), json={
+            "client_id": "client-legacy-plugin",
+            "text": "Tell me the current time.",
+            "skill_ids": [],
+            "plugin_ids": [],
+        }).json()
+
+    with SessionLocal() as session:
+        goal = session.get(Goal, goal_payload["id"])
+        goal.plugin_ids = json.dumps(["time"])
+        session.commit()
+        session.expunge(goal)
+    assignment_id = create_test_assignment(goal_payload["id"], goal_payload["text"])
+    with SessionLocal() as session:
+        assignment = session.get(GoalAssignment, assignment_id)
+        session.expunge(assignment)
+
+    manager = GoalTaskManager()
+    tools, toolsets = asyncio.run(manager._preflight(account["id"], goal, assignment))
+    assert len(tools) == 6
+    assert len(toolsets) == 1
+    with SessionLocal() as session:
+        assert json.loads(session.get(Goal, goal_payload["id"]).plugin_ids) == []
+    assert "plugins=legacy_unknown_removed ids=['time']" in caplog.text
 
 
 def test_goal_preflight_does_not_connect_browser_before_the_worker_loads_it() -> None:
