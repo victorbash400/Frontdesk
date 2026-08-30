@@ -1,11 +1,13 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from threading import Lock
 
 import psycopg
 
 from .config import get_settings
+from .postgres_events import PostgresEvents
 
 
 EVENT_CHANNEL = "front_desk_events"
@@ -16,6 +18,7 @@ class AccountEventBroker:
     def __init__(self) -> None:
         self._lock = Lock()
         self._subscribers: dict[str, set[tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, object]]]]] = {}
+        self._postgres = PostgresEvents(EVENT_CHANNEL)
 
     async def subscribe(self, account_id: str) -> AsyncIterator[str]:
         events = self.events(account_id).__aiter__()
@@ -37,8 +40,9 @@ class AccountEventBroker:
     async def events(self, account_id: str, ready: asyncio.Event | None = None) -> AsyncIterator[dict[str, object]]:
         """Yield account events directly for internal event-driven consumers."""
         if _postgres_url():
-            async for event in self._events_postgres(account_id, ready):
-                yield event
+            async with aclosing(self._events_postgres(account_id, ready)) as events:
+                async for event in events:
+                    yield event
             return
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
@@ -74,17 +78,9 @@ class AccountEventBroker:
         postgres_url = _postgres_url()
         if not postgres_url:
             return
-        connection = await psycopg.AsyncConnection.connect(postgres_url, autocommit=True)
-        try:
-            await connection.execute(f"LISTEN {EVENT_CHANNEL}")
-            if ready is not None:
-                ready.set()
-            async for notification in connection.notifies():
-                payload = json.loads(notification.payload)
-                if payload.get("account_id") == account_id and isinstance(payload.get("event"), dict):
-                    yield payload["event"]
-        finally:
-            await connection.close()
+        async with aclosing(self._postgres.events(postgres_url, account_id, ready)) as events:
+            async for event in events:
+                yield event
 
 
 def frame(event: dict[str, object]) -> str:
