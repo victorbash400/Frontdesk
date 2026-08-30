@@ -30,8 +30,7 @@ def configure_model(callback_context, llm_request):
     for key in updates:
         setattr(llm_request.config, key, getattr(configuration, key))
     if manifest.output_schema is not None:
-        llm_request.config.response_mime_type = "application/json"
-        llm_request.config.response_json_schema = manifest.output_schema
+        llm_request.set_output_schema(manifest.output_schema)
 
 
 def tool_failed(tool, args, tool_context, error):

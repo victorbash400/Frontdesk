@@ -86,9 +86,30 @@ def test_planner_schema_and_configuration_survive_runtime_boundary() -> None:
     request = LlmRequest()
     configure_model(SimpleNamespace(state={MANIFEST_STATE: spec}), request)
     assert request.model == spec["model"]
-    assert request.config.response_json_schema == schema
+    assert request.config.response_schema == schema
+    assert request.config.response_json_schema is None
     assert request.config.response_mime_type == "application/json"
     assert request.config.thinking_config.thinking_level == types.ThinkingLevel.LOW
+
+
+def test_planner_response_budget_survives_runtime_boundary() -> None:
+    from agents.goal_planner import create_goal_planner_runner
+    from app.agent_tool_binding import AgentToolBinding
+    from google.adk.models.llm_request import LlmRequest
+
+    async def exercise():
+        sessions = InMemorySessionService()
+        runner = create_goal_planner_runner(sessions)
+        session = await sessions.create_session(app_name=runner.app_name, user_id="budget-test")
+        spec = await AgentToolBinding(runner, session, "budget-run").manifest()
+        request = LlmRequest()
+        configure_model(SimpleNamespace(state={MANIFEST_STATE: spec}), request)
+        assert request.config.max_output_tokens == 8192
+        assert request.config.http_options.timeout == 120_000
+        assert request.config.response_schema == spec["output_schema"]
+        assert request.config.response_json_schema is None
+
+    asyncio.run(exercise())
 
 
 def test_agent_engine_application_can_be_serialized_without_backend_imports() -> None:
