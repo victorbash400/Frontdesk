@@ -9,6 +9,7 @@ from sqlalchemy import text
 from app.database import engine
 from app.event_stream import AccountEventBroker
 from app.runtime_lock import runtime_lock
+from tools.browser_use.relay_probe import check as check_browser_relay
 
 
 async def check() -> dict[str, str]:
@@ -36,7 +37,8 @@ async def check() -> dict[str, str]:
         incoming.cancel()
         await asyncio.gather(incoming, return_exceptions=True)
         await events.aclose()
-    return {"database": "connected", "exclusive_ownership": "verified", "cross_connection_notifications": "verified"}
+    browser_relay = await check_browser_relay()
+    return {"database": "connected", "exclusive_ownership": "verified", "cross_connection_notifications": "verified", "two_process_browser_relay": browser_relay}
 
 
 if __name__ == "__main__":

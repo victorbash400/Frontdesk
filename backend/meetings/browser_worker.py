@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from app.config import get_settings
 from app.database import SessionLocal
+from app.runtime_lock import runtime_lock
 from tools.browser_use.playwright import connected_playwright_toolset
 
 from .agent_session import create_agent_ticket
@@ -15,6 +16,13 @@ logger = logging.getLogger("uvicorn.error")
 
 
 async def join_meeting(meeting: Meeting, *, voice: str = "Kore", language: str = "en") -> dict[str, str]:
+    with runtime_lock("meeting-launch", meeting.id) as acquired:
+        if not acquired:
+            raise ValueError("This meeting is already being launched.")
+        return await _join_meeting(meeting, voice=voice, language=language)
+
+
+async def _join_meeting(meeting: Meeting, *, voice: str, language: str) -> dict[str, str]:
     if not meeting.meet_uri:
         raise ValueError("The meeting does not have a Google Meet link.")
     settings = get_settings()

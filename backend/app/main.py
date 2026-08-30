@@ -34,6 +34,7 @@ from .skills import create_skill, delete_skill, list_skills, update_skill
 from .voice import create_voice_ticket, run_voice_session
 from meetings.routes import router as meetings_router
 from tools.browser_use.cloud_relay import router as browser_relay_router
+from tools.browser_use.relay_worker import browser_relay_workers
 from .agent_tool_gateway import router as agent_tool_router
 
 
@@ -51,6 +52,7 @@ async def lifespan(_: FastAPI):
     try:
         yield
     finally:
+        await browser_relay_workers.close()
         await mailboxes.close()
         await email_agent.close()
 

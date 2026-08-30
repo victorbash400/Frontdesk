@@ -24,4 +24,14 @@ Front Desk is a client-work workspace with direct Gemini chat, visible model rea
 
 The demo account is `demo@front-desk.local` with password `front-desk-demo`.
 
-The current goal worker runs locally inside the FastAPI process and is structured for a later Cloud Run deployment. A production deployment still needs an external durable dispatch service before goal execution can survive instance termination or scale-to-zero.
+## Cloud backend
+
+The backend runs on Cloud Run with PostgreSQL-backed records, account events, runtime ownership, and browser relay frames. ADK reasoning runs in Vertex AI Agent Engine; scoped tools remain in the authenticated Cloud Run gateway. The browser extension connects from the local frontend to the public Cloud Run relay, while the private Playwright socket stays on its owning backend instance.
+
+Deployment inputs are deliberately allowlisted:
+
+- `infra/stage_backend.py` stages only backend Python runtime files, the production requirements, Dockerfile, and the minimal Playwright MCP package.
+- `infra/deploy_agent_engine.py` stages only `agent_runtime`, its requirements, and secret references.
+- Local databases, goals, records, browser screenshots, `.env` files, and the frontend are never copied into either backend bundle.
+
+Run the backend test suite in a clean Python 3.13 environment, build the staged backend directory with Cloud Build, and run `app.deployment_check` as a one-shot Cloud Run job before moving traffic. The check verifies Cloud SQL, exclusive runtime ownership, PostgreSQL notifications, and two-process browser-frame delivery without creating accounts, goals, or customer records.

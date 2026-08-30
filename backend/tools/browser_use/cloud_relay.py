@@ -14,12 +14,13 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from pydantic import BaseModel
 from sqlalchemy import DateTime, ForeignKey, String, Text, update
 from sqlalchemy.orm import Mapped, mapped_column
-from websockets.asyncio.client import connect
 
 from app.auth import require_account_id
 from app.config import get_settings
 from app.database import Base, SessionLocal
 from app.event_stream import account_events
+from .relay_channel import RelayChannel, until_disconnected
+from .relay_worker import browser_relay_workers
 
 
 INSTANCE_ID = str(uuid4())
@@ -40,6 +41,12 @@ class BrowserRelayConnection(Base):
 
 class ConnectionRequest(BaseModel):
     endpoint: str
+
+
+def finish_connection(connection_id: str) -> None:
+    with SessionLocal() as session:
+        session.execute(update(BrowserRelayConnection).where(BrowserRelayConnection.id == connection_id).values(state="closed"))
+        session.commit()
 
 
 def validate_endpoint(endpoint: str) -> str:
@@ -67,6 +74,11 @@ async def register_connection(body: ConnectionRequest, account_id: str = Depends
             local_endpoint=endpoint, expires_at=datetime.now(timezone.utc) + timedelta(minutes=2),
         ))
         session.commit()
+    try:
+        await browser_relay_workers.start(connection_id, endpoint, finish_connection)
+    except BaseException:
+        finish_connection(connection_id)
+        raise
     origin = get_settings().public_api_url.rstrip("/").replace("https://", "wss://").replace("http://", "ws://")
     url = f"{origin}/api/browser/relay/{ticket}"
     account_events.publish(account_id, {"type": "browser_connection_requested", "relay_url": url})
@@ -78,45 +90,41 @@ async def register_connection(body: ConnectionRequest, account_id: str = Depends
 async def relay_socket(socket: WebSocket, ticket: str) -> None:
     connection_id = hashlib.sha256(ticket.encode()).hexdigest()
     with SessionLocal() as session:
-        endpoint = session.execute(update(BrowserRelayConnection).where(
+        owner = session.execute(update(BrowserRelayConnection).where(
             BrowserRelayConnection.id == connection_id,
-            BrowserRelayConnection.instance_id == INSTANCE_ID,
             BrowserRelayConnection.state == "pending",
             BrowserRelayConnection.expires_at > datetime.now(timezone.utc),
-        ).values(state="connected").returning(BrowserRelayConnection.local_endpoint)).scalar_one_or_none()
+        ).values(state="connected").returning(BrowserRelayConnection.instance_id)).scalar_one_or_none()
         session.commit()
-    if not endpoint:
-        await socket.close(code=1008, reason="Browser connection expired, already used, or belongs to another runtime.")
+    if not owner:
+        await socket.close(code=1008, reason="Browser connection expired or already used.")
         return
     await socket.accept()
-    logger.info("browser=%s connection=connected", connection_id)
+    logger.info("browser=%s connection=connected owner=%s ingress=%s", connection_id, owner, INSTANCE_ID)
     try:
-        async with connect(endpoint, max_size=32 * 1024 * 1024, open_timeout=10) as upstream:
+        channel = RelayChannel(connection_id, "extension")
+        async with channel.open() as consumer:
+            channel.announce_connected()
+
             async def to_playwright() -> None:
+                async with asyncio.timeout(15):
+                    await channel.connected.wait()
                 while True:
-                    await upstream.send(await socket.receive_text())
+                    await channel.send(await socket.receive_text())
 
             async def to_extension() -> None:
-                async for message in upstream:
-                    await socket.send_text(message.decode() if isinstance(message, bytes) else message)
+                while True:
+                    await socket.send_text(await channel.receive())
 
-            tasks = {asyncio.create_task(to_playwright()), asyncio.create_task(to_extension())}
-            try:
-                done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                for task in done:
-                    task.result()
-            finally:
-                for task in tasks:
-                    task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
+            await until_disconnected(consumer, to_playwright(), to_extension())
     except WebSocketDisconnect:
         pass
+    except ConnectionError as error:
+        logger.info("browser=%s connection=disconnected detail=%s", connection_id, error)
     except Exception:
         logger.exception("browser=%s connection=failed", connection_id)
     finally:
-        with SessionLocal() as session:
-            session.execute(update(BrowserRelayConnection).where(BrowserRelayConnection.id == connection_id).values(state="closed"))
-            session.commit()
+        finish_connection(connection_id)
         with suppress(RuntimeError):
             await socket.close()
         logger.info("browser=%s connection=closed", connection_id)

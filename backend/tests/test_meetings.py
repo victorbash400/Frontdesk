@@ -16,7 +16,7 @@ from app.models import GoalAssignment, GoalNotification
 from app.config import get_settings
 from app.main import app
 from meetings.agent_session import AgentIdentity, _bridge, _coordinator_notification, _pcm_peak, _register_bridge_and_wait_for_participant, _run_identity_bound_agent, create_agent_ticket, verify_agent_ticket
-from meetings.browser_worker import join_meeting
+from meetings.browser_worker import _join_meeting, join_meeting
 from meetings.events import decode_pubsub_event
 from meetings.coordinator_tools import execute_coordinator_tool
 from meetings.models import Meeting, MeetingEvent
@@ -492,7 +492,7 @@ def test_agent_does_not_generate_synthetic_client_speech() -> None:
 
 
 def test_browser_opener_does_not_compete_with_meet_worker_controls() -> None:
-    source = inspect.getsource(join_meeting)
+    source = inspect.getsource(_join_meeting)
     assert "browser_navigate" in source
     assert "browser_snapshot" in source
     assert "browser_click" not in source

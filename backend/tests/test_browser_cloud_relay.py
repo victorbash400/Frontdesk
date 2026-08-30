@@ -56,7 +56,8 @@ def test_cloud_browser_does_not_require_local_chrome_profile_or_token() -> None:
         asyncio.run(toolset.close())
 
 
-def test_cloud_relay_transports_messages_and_rejects_reused_ticket() -> None:
+@pytest.mark.parametrize("other_instance", [False, True])
+def test_cloud_relay_transports_messages_and_rejects_reused_ticket(other_instance) -> None:
     def echo(connection):
         for message in connection:
             connection.send(message)
@@ -66,7 +67,7 @@ def test_cloud_relay_transports_messages_and_rejects_reused_ticket() -> None:
         thread.start()
         try:
             with TestClient(app) as client:
-                account = client.post("/accounts", json={"name": "Relay Transport", "email": "transport@example.test", "password": "browser-test-password"}).json()
+                account = client.post("/accounts", json={"name": "Relay Transport", "email": f"transport-{other_instance}@example.test", "password": "browser-test-password"}).json()
                 port = server.socket.getsockname()[1]
                 with patch("tools.browser_use.cloud_relay.account_events.publish") as publish:
                     response = client.post("/internal/browser/connections", json={
@@ -74,9 +75,12 @@ def test_cloud_relay_transports_messages_and_rejects_reused_ticket() -> None:
                     }, headers={"X-Front-Desk-Account": account["id"], "X-Front-Desk-Internal-Secret": "test-internal-secret"})
                 assert response.status_code == 200
                 path = urlparse(publish.call_args.args[1]["relay_url"]).path
-                with client.websocket_connect(path) as socket:
-                    socket.send_text('{"id":1,"method":"extension.initialized","params":[]}')
-                    assert socket.receive_text() == '{"id":1,"method":"extension.initialized","params":[]}'
+                from tools.browser_use.cloud_relay import INSTANCE_ID
+                with patch("tools.browser_use.cloud_relay.INSTANCE_ID", "different-ingress" if other_instance else INSTANCE_ID):
+                    with client.websocket_connect(path) as socket:
+                        for message in ['{"id":1,"method":"extension.initialized","params":[]}', "large frame " * 10000]:
+                            socket.send_text(message)
+                            assert socket.receive_text() == message
                 with pytest.raises(WebSocketDisconnect):
                     with client.websocket_connect(path):
                         pass

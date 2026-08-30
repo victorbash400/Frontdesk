@@ -6,6 +6,7 @@ import logging
 import smtplib
 import ssl
 import threading
+from contextlib import ExitStack
 from dataclasses import dataclass
 from email.header import decode_header
 from email.message import EmailMessage, Message
@@ -22,6 +23,7 @@ from .event_stream import account_events
 from .goals import add_goal_activity
 from .models import ClientEmailIdentity, EmailAgentActivity, EmailConversation, Goal, MailboxConnection, MailMessage, Node
 from .secret_store import decrypt_secret, encrypt_secret
+from .runtime_lock import runtime_lock
 
 
 TITAN_IMAP_HOST = "imap.titan.email"
@@ -238,13 +240,26 @@ class MailboxManager:
         for mailbox_id in ids:
             await self.start(mailbox_id)
 
-    async def start(self, mailbox_id: str) -> None:
+    async def start(self, mailbox_id: str) -> bool:
         current = self._tasks.get(mailbox_id)
         if current and not current.done():
-            return
-        task = asyncio.create_task(self._run(mailbox_id), name=f"mailbox-{mailbox_id}")
+            return False
+        lease = ExitStack()
+        if not lease.enter_context(runtime_lock("mailbox", mailbox_id)):
+            lease.close()
+            return False
+        try:
+            task = asyncio.create_task(self._run(mailbox_id), name=f"mailbox-{mailbox_id}")
+        except BaseException:
+            lease.close()
+            raise
         self._tasks[mailbox_id] = task
-        task.add_done_callback(lambda done: self._tasks.pop(mailbox_id, None) if self._tasks.get(mailbox_id) is done else None)
+        def finished(done):
+            lease.close()
+            if self._tasks.get(mailbox_id) is done:
+                self._tasks.pop(mailbox_id, None)
+        task.add_done_callback(finished)
+        return True
 
     async def stop(self, mailbox_id: str) -> None:
         task = self._tasks.pop(mailbox_id, None)

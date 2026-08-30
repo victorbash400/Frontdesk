@@ -36,6 +36,7 @@ def main() -> None:
     if urlparse(args.relay_url).scheme != "https":
         parser.error("--relay-url must use HTTPS")
 
+    os.environ.setdefault("GRPC_DNS_RESOLVER", "native")
     import vertexai
     from google.cloud.aiplatform_v1.types.env_var import SecretRef
     from vertexai import agent_engines
@@ -44,7 +45,7 @@ def main() -> None:
     sys.path.insert(0, str(ROOT))
     from agent_runtime.agent import create_agent
 
-    vertexai.init(project=args.project, location=args.region, staging_bucket=f"gs://{args.bucket}", api_transport="rest")
+    vertexai.init(project=args.project, location=args.region, staging_bucket=f"gs://{args.bucket}", api_transport="grpc")
     existing = list(agent_engines.list(filter='display_name="Front Desk Agent"'))
     if args.resource and args.resource not in {item.resource_name for item in existing}:
         raise RuntimeError("The requested Front Desk Agent does not exist in this project and region.")

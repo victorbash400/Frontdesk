@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import ExitStack
 from uuid import uuid4
 
 from google.adk.sessions import DatabaseSessionService
@@ -10,6 +11,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.event_stream import account_events
 from app.models import EmailAgentActivity, MailMessage
+from app.runtime_lock import runtime_lock
 
 
 logger = logging.getLogger(__name__)
@@ -28,13 +30,26 @@ class EmailAgentManager:
         for message_id in message_ids:
             await self.start(message_id)
 
-    async def start(self, message_id: str, instruction: str = "Process the newly received email now.", fresh_session: bool = False) -> None:
+    async def start(self, message_id: str, instruction: str = "Process the newly received email now.", fresh_session: bool = False) -> bool:
         current = self._tasks.get(message_id)
         if current and not current.done():
-            return
-        task = asyncio.create_task(self._run(message_id, instruction, fresh_session), name=f"email-agent-{message_id}")
+            return False
+        lease = ExitStack()
+        if not lease.enter_context(runtime_lock("email-message", message_id)):
+            lease.close()
+            return False
+        try:
+            task = asyncio.create_task(self._run(message_id, instruction, fresh_session), name=f"email-agent-{message_id}")
+        except BaseException:
+            lease.close()
+            raise
         self._tasks[message_id] = task
-        task.add_done_callback(lambda done: self._tasks.pop(message_id, None) if self._tasks.get(message_id) is done else None)
+        def finished(done):
+            lease.close()
+            if self._tasks.get(message_id) is done:
+                self._tasks.pop(message_id, None)
+        task.add_done_callback(finished)
+        return True
 
     async def retry(self, account_id: str, message_id: str) -> dict[str, str]:
         current = self._tasks.get(message_id)
