@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from uuid import uuid4
 
 from google.adk.sessions import DatabaseSessionService
 from google.genai import types
@@ -27,13 +28,34 @@ class EmailAgentManager:
         for message_id in message_ids:
             await self.start(message_id)
 
-    async def start(self, message_id: str) -> None:
+    async def start(self, message_id: str, instruction: str = "Process the newly received email now.", fresh_session: bool = False) -> None:
         current = self._tasks.get(message_id)
         if current and not current.done():
             return
-        task = asyncio.create_task(self._run(message_id), name=f"email-agent-{message_id}")
+        task = asyncio.create_task(self._run(message_id, instruction, fresh_session), name=f"email-agent-{message_id}")
         self._tasks[message_id] = task
         task.add_done_callback(lambda done: self._tasks.pop(message_id, None) if self._tasks.get(message_id) is done else None)
+
+    async def retry(self, account_id: str, message_id: str) -> dict[str, str]:
+        current = self._tasks.get(message_id)
+        if current and not current.done():
+            return {"status": "processing", "message_id": message_id}
+        with SessionLocal() as session:
+            message = session.get(MailMessage, message_id)
+            if not message or message.direction != "inbound":
+                raise RuntimeError("The customer email was not found.")
+            from app.models import MailboxConnection
+            mailbox = session.get(MailboxConnection, message.mailbox_id)
+            if not mailbox or mailbox.account_id != account_id:
+                raise RuntimeError("The customer email was not found.")
+            message.agent_status = "queued"
+            message.agent_action = ""
+            message.agent_failure = ""
+            message.attention_required = False
+            session.commit()
+            account_events.publish(account_id, {"type": "mailbox_changed", "message_id": message.id})
+        await self.start(message_id, "Re-read this email and its current persisted context. Check how far the linked customer work has progressed, correct any failed or incomplete routing decision, and continue the same case without duplicating its client or goal.", fresh_session=True)
+        return {"status": "queued", "message_id": message_id}
 
     async def close(self) -> None:
         tasks = list(self._tasks.values())
@@ -42,11 +64,11 @@ class EmailAgentManager:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _run(self, message_id: str) -> None:
+    async def _run(self, message_id: str, instruction: str, fresh_session: bool) -> None:
         account_id = self._begin(message_id)
         if not account_id:
             return
-        session_id = f"email-{message_id}"
+        session_id = f"email-{message_id}-{uuid4().hex}" if fresh_session else f"email-{message_id}"
         try:
             existing = await sessions.get_session(app_name=runner.app_name, user_id=account_id, session_id=session_id)
             if not existing:
@@ -54,7 +76,7 @@ class EmailAgentManager:
             async for event in runner.run_async(
                 user_id=account_id,
                 session_id=session_id,
-                new_message=types.Content(role="user", parts=[types.Part.from_text(text="Process the newly received email now.")]),
+                new_message=types.Content(role="user", parts=[types.Part.from_text(text=instruction)]),
             ):
                 if event.error_message:
                     raise RuntimeError(event.error_message)

@@ -202,9 +202,11 @@ def decide_email_action(
             objective = goal_objective.strip()
             if not objective:
                 return _failed("A new goal requires a concrete customer outcome.")
+            seed_skills(session, account_id)
             skill = session.scalar(select(Skill).where(Skill.account_id == account_id, Skill.slug == "aqualabs-customer-resolution"))
             installed = set(session.scalars(select(PluginInstallation.plugin_id).where(PluginInstallation.account_id == account_id)))
-            plugin_ids = sorted(installed & {"aqualabs-store", "atlassian", "browser-use", "github", "google-workspace", "slack"})
+            required_plugins = set(json.loads(skill.required_plugin_ids)) if skill else set()
+            plugin_ids = sorted(installed & required_plugins)
             snapshot = create_goal(session, account_id, client.id, objective, [skill.id] if skill else [], plugin_ids)
             dispatch_goal_id = str(snapshot["id"])
             conversation.goal_id = dispatch_goal_id

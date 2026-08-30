@@ -29,6 +29,13 @@ export function useMailboxThreads(connected: boolean) {
     }
   }, [connected]);
 
+  const retry = useCallback(async (messageId: string) => {
+    const response = await authenticatedFetch(`/api/mailbox/messages/${encodeURIComponent(messageId)}/retry`, { method: "POST" });
+    const payload = await response.json() as { error?: string };
+    if (!response.ok) throw new Error(payload.error || "Could not retry the Email Agent.");
+    await refresh();
+  }, [refresh]);
+
   useEffect(() => {
     const frame = requestAnimationFrame(() => void refresh());
     if (!connected) return () => cancelAnimationFrame(frame);
@@ -40,5 +47,5 @@ export function useMailboxThreads(connected: boolean) {
     return () => { cancelAnimationFrame(frame); events.close(); };
   }, [connected, refresh]);
 
-  return { error, loaded, refresh, threads };
+  return { error, loaded, refresh, retry, threads };
 }

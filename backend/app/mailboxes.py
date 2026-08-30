@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from .database import SessionLocal
 from .event_stream import account_events
 from .goals import add_goal_activity
-from .models import EmailAgentActivity, EmailConversation, Goal, MailboxConnection, MailMessage, Node
+from .models import ClientEmailIdentity, EmailAgentActivity, EmailConversation, Goal, MailboxConnection, MailMessage, Node
 from .secret_store import decrypt_secret, encrypt_secret
 
 
@@ -149,7 +149,7 @@ def disconnect_mailbox(session: Session, account_id: str) -> None:
 def titan_tools(account_id: str) -> list[FunctionTool]:
     with SessionLocal() as session:
         connected = session.scalar(select(MailboxConnection.id).where(MailboxConnection.account_id == account_id, MailboxConnection.provider == "titan")) is not None
-    return [FunctionTool(titan_list_goal_messages), FunctionTool(titan_reply_to_customer)] if connected else []
+    return [FunctionTool(titan_list_goal_messages), FunctionTool(titan_email_client), FunctionTool(titan_reply_to_customer)] if connected else []
 
 
 async def titan_list_goal_messages(tool_context: ToolContext) -> dict[str, object]:
@@ -158,6 +158,42 @@ async def titan_list_goal_messages(tool_context: ToolContext) -> dict[str, objec
     with SessionLocal() as session:
         messages = list(session.scalars(select(MailMessage).where(MailMessage.goal_id == goal_id).order_by(MailMessage.created_at)))
         return {"messages": [{"direction": item.direction, "from": item.sender, "to": item.recipients, "subject": item.subject, "body": item.body, "message_id": item.message_id} for item in messages]}
+
+
+async def titan_email_client(to: str, subject: str, body: str, tool_context: ToolContext) -> dict[str, object]:
+    """Send a new email from Titan to the verified client email for the current goal."""
+    account_id = str(tool_context.state.get("account_id") or "")
+    goal_id = str(tool_context.state.get("goal_id") or "")
+    client_id = str(tool_context.state.get("client_id") or "")
+    recipient = parseaddr(to)[1].strip().lower()
+    if not recipient or not subject.strip() or not body.strip():
+        raise ValueError("A client email, subject, and body are required.")
+    with SessionLocal() as session:
+        verified = session.scalar(select(ClientEmailIdentity.email).where(
+            ClientEmailIdentity.client_id == client_id,
+            ClientEmailIdentity.email == recipient,
+        ))
+        if not verified:
+            raise ValueError("The recipient is not a verified email for the current Front Desk client.")
+        connection = session.scalar(select(MailboxConnection).where(MailboxConnection.account_id == account_id, MailboxConnection.provider == "titan"))
+        if not connection:
+            raise RuntimeError("Titan mail is not connected.")
+        logger.info("mailbox=titan goal=%s client=%s send=started to=%s subject=%r", goal_id, client_id, recipient, subject.strip())
+        message_id = make_msgid(domain=connection.email.split("@", 1)[-1])
+        message = EmailMessage()
+        message["From"] = connection.email
+        message["To"] = recipient
+        message["Subject"] = subject.strip()
+        message["Message-ID"] = message_id
+        message.set_content(body.strip())
+        await asyncio.to_thread(_smtp_send, connection, decrypt_secret(connection.encrypted_password), message)
+        record = MailMessage(mailbox_id=connection.id, client_id=client_id or None, goal_id=goal_id or None, direction="outbound", message_id=message_id, sender=connection.email, recipients=recipient, subject=subject.strip(), body=body.strip(), agent_status="completed", agent_action="outbound")
+        session.add(record)
+        session.commit()
+        if goal_id:
+            add_goal_activity(session, account_id, goal_id, "email_sent", f"Sent an email to {recipient}: {subject.strip()}")
+        logger.info("mailbox=titan goal=%s client=%s send=completed to=%s message_id=%s", goal_id, client_id, recipient, message_id)
+        return {"status": "sent", "message_id": message_id, "to": recipient, "subject": subject.strip()}
 
 
 async def titan_reply_to_customer(body: str, tool_context: ToolContext) -> dict[str, object]:

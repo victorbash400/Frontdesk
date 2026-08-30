@@ -51,6 +51,7 @@ def test_email_agent_tools_bind_reply_to_exact_existing_goal() -> None:
         client_id = str(resolve_email_client(first_context)["client_id"])
         with SessionLocal() as session:
             session.add(PluginInstallation(account_id=account["id"], plugin_id="aqualabs-store"))
+            session.add(PluginInstallation(account_id=account["id"], plugin_id="github"))
             session.commit()
         update_client_email_summary("Current problem: Order AQ-1042 payment is missing.", first_context)
         created = decide_email_action("create_goal", "This is a concrete new order problem.", first_context, goal_objective="Correct the missing payment on order AQ-1042 and confirm the outcome with Pat.")
@@ -59,6 +60,7 @@ def test_email_agent_tools_bind_reply_to_exact_existing_goal() -> None:
         with SessionLocal() as session:
             goal = session.get(Goal, goal_id)
             assert goal and "aqualabs-store" in goal.plugin_ids
+            assert "github" not in goal.plugin_ids
             first = session.get(MailMessage, first_id)
             connection = session.get(MailboxConnection, first.mailbox_id)
             outbound = MailMessage(mailbox_id=connection.id, client_id=client_id, conversation_id=first.conversation_id, goal_id=goal_id, direction="outbound", message_id="<question@example.com>", in_reply_to=first.message_id, references=first.message_id, sender=connection.email, recipients="pat@example.com", subject="Re: Order AQ-1042", body="Can you confirm the charge time?", agent_status="completed", agent_action="outbound")
