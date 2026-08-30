@@ -56,7 +56,6 @@ def create_goal_planner_runner(session_service: BaseSessionService) -> Runner:
         generate_content_config=types.GenerateContentConfig(
             thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
             max_output_tokens=8192,
-            http_options=types.HttpOptions(timeout=120_000),
         ),
     )
     return create_runner(app=App(name="front_desk_goal_planner", root_agent=planner), session_service=session_service)

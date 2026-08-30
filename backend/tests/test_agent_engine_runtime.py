@@ -105,7 +105,6 @@ def test_planner_response_budget_survives_runtime_boundary() -> None:
         request = LlmRequest()
         configure_model(SimpleNamespace(state={MANIFEST_STATE: spec}), request)
         assert request.config.max_output_tokens == 8192
-        assert request.config.http_options.timeout == 120_000
         assert request.config.response_schema == spec["output_schema"]
         assert request.config.response_json_schema is None
 
