@@ -24,7 +24,7 @@ async def connected_external_plugin_toolset(account_id: str, plugin_id: str) -> 
             timeout=MCP_COMMAND_TIMEOUT_SECONDS,
         ),
         tool_filter=_permission_filter(account_id, plugin_id),
-        use_mcp_resources=True,
+        use_mcp_resources=False,
     )
     try:
         tools = await toolset.get_tools()
@@ -34,6 +34,7 @@ async def connected_external_plugin_toolset(account_id: str, plugin_id: str) -> 
     if not tools:
         await toolset.close()
         raise RuntimeError(f"{plugin_id.title()} connected without exposing enabled tools.")
+    toolset.front_desk_tool_names = tuple(tool.name for tool in tools)
     if connection.tool_count != len(tools):
         with SessionLocal() as session:
             row = session.get(PluginConnection, connection.id)

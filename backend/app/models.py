@@ -318,6 +318,8 @@ class GoalAssignment(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
+    source_meeting_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    auxiliary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     instruction: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="queued", nullable=False, index=True)
@@ -379,6 +381,7 @@ class GoalNotification(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
+    assignment_id: Mapped[str | None] = mapped_column(ForeignKey("goal_assignments.id", ondelete="CASCADE"), index=True)
     client_id: Mapped[str] = mapped_column(String(128), index=True)
     kind: Mapped[str] = mapped_column(String(24), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)

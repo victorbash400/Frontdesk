@@ -27,4 +27,5 @@ async def configured_aqualabs_store_toolset() -> McpToolset:
     if not tools:
         await toolset.close()
         raise RuntimeError("Aqualabs Store MCP connected without exposing tools.")
+    toolset.front_desk_tool_names = tuple(tool.name for tool in tools)
     return toolset

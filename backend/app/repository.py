@@ -126,7 +126,7 @@ def sync_nodes(session: Session, account_id: str, nodes: list[FileSystemNodeSync
             node.needs_attention = item.needs_attention
             node.trashed_at = item.trashed_at
             session.flush()
-            if item.kind in {"document", "note"} and item.content is not None:
+            if item.kind in {"document", "note", "profile"} and item.content is not None:
                 content = session.scalar(select(DocumentContent).where(DocumentContent.node_id == node.id))
                 if content:
                     content.content = item.content

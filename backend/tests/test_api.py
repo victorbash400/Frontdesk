@@ -18,19 +18,22 @@ os.environ["FRONT_DESK_INTERNAL_SECRET"] = "test-internal-secret"
 from app.main import app
 from app.database import SessionLocal
 from app.event_stream import AccountEventBroker
-from app.goal_tasks import GoalTaskManager
+from app.goal_tasks import GoalTaskManager, WORKER_INSTRUCTION
 from app.goals import create_notification
 from app.models import GitHubRepositoryAccess, Goal, GoalAssignment, GoalAutomation, GoalBrowserPreview, MailboxConnection, MailMessage, OAuthConnection, PluginInstallation
 from app.google_oauth import connection_status
 from app.skills import list_skills
-from agents.goal_planner import GoalPlan, GoalTaskOperation
+from agents.goal_planner import GoalPlan, GoalTaskOperation, PLANNER_INSTRUCTION
 from agents.goals_chat_agent import create_goals_chat_app
 from app import google_oauth
+from app import email_agent as email_agent_service
 from app import mailboxes as mailbox_service
 from app.voice import VOICE_MODEL, VOICE_TOOLS, verify_voice_ticket
 from tools import workspace
 from tools.browser_use import playwright as playwright_browser
 from tools.goal_control import complete_goal
+from tools.client_context import list_clients, read_client_profile
+from tools.goal_tool_registry import GoalToolRegistry
 from tools.tool_failures import begin_single_tool, finish_single_tool
 from tools.supervisor_tools import execute_client_tool
 
@@ -224,6 +227,36 @@ def test_titan_inbound_message_is_queued_for_email_agent_without_creating_goal()
         assert threads.json()[0]["subject"] == "Order marked unpaid"
         assert threads.json()[0]["clientName"] == "Potato Customer"
         assert threads.json()[0]["agentStatus"] == "queued"
+
+
+def test_retry_email_agent_requeues_the_existing_inbound_message() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "email-retry@example.com", "Email Retry")
+        headers = account_headers(account["id"])
+        with SessionLocal() as session:
+            connection = MailboxConnection(account_id=account["id"], provider="titan", email="support@aqualabs.tech", incoming_host="imap.titan.email", incoming_port=993, outgoing_host="smtp.titan.email", outgoing_port=465, encrypted_password="encrypted", uid_validity="1", last_uid=0, state="connected")
+            session.add(connection)
+            session.flush()
+            message = MailMessage(mailbox_id=connection.id, direction="inbound", message_id="<retry@example.com>", sender="customer@example.com", recipients="support@aqualabs.tech", subject="Retry this case", body="Please continue.", agent_status="failed", agent_action="request_attention", agent_failure="Previous run failed.", attention_required=True)
+            session.add(message)
+            session.commit()
+            message_id = message.id
+
+        with patch.object(email_agent_service.email_agent, "start", new=AsyncMock()) as start:
+            response = client.post(f"/api/mailbox/messages/{message_id}/retry", headers=headers)
+
+        assert response.status_code == 202
+        assert response.json() == {"status": "queued", "message_id": message_id}
+        start.assert_awaited_once()
+        assert start.await_args.args[0] == message_id
+        assert "current persisted context" in start.await_args.args[1]
+        assert start.await_args.kwargs == {"fresh_session": True}
+        with SessionLocal() as session:
+            retried = session.get(MailMessage, message_id)
+            assert retried and retried.agent_status == "queued"
+            assert retried.agent_action == ""
+            assert retried.agent_failure == ""
+            assert retried.attention_required is False
 
 
 def test_workspace_avatar_url_is_versioned_by_connected_identity() -> None:
@@ -440,7 +473,7 @@ def test_goal_board_and_scheduled_run_dispatch() -> None:
         assert client.get("/api/notifications", headers=headers, params={"client_id": "client-acme"}).json() == []
 
 
-def test_goal_tool_preflight_failure_never_creates_gemini_runner() -> None:
+def test_goal_preflight_does_not_connect_browser_before_the_worker_loads_it() -> None:
     with TestClient(app) as client:
         account = create_account(client, "preflight@example.com", "Preflight")
         headers = account_headers(account["id"])
@@ -459,22 +492,45 @@ def test_goal_tool_preflight_failure_never_creates_gemini_runner() -> None:
         session.commit()
 
     manager = GoalTaskManager()
-    runner = MagicMock()
-    with patch("app.goal_tasks.connected_playwright_toolset", new=AsyncMock(side_effect=RuntimeError("Chrome extension is not connected."))), patch.object(manager, "_runner", runner):
-        assignment_id = create_test_assignment(goal["id"], goal["text"])
-        asyncio.run(manager._run_assignment(account["id"], goal["id"], assignment_id))
-
-    runner.assert_not_called()
+    assignment_id = create_test_assignment(goal["id"], goal["text"])
     with SessionLocal() as session:
-        assignment = session.query(GoalAssignment).filter_by(goal_id=goal["id"]).one()
-        assert assignment.status == "failed"
-        assert assignment.report == "Chrome extension is not connected."
-        persisted_goal = session.get(Goal, goal["id"])
-        assert persisted_goal and persisted_goal.run_state == "failed"
-        assert persisted_goal.current_step == "Chrome extension is not connected."
+        assignment = session.get(GoalAssignment, assignment_id)
+        session.expunge(assignment)
+    with patch("tools.goal_tool_registry.connected_playwright_toolset", new=AsyncMock(side_effect=RuntimeError("Chrome extension is not connected."))) as connect:
+        tools, toolsets = asyncio.run(manager._preflight(account["id"], manager._goal(account["id"], goal["id"]), assignment))
+    connect.assert_not_awaited()
+    assert len(tools) == 6
+    assert isinstance(toolsets[0], GoalToolRegistry)
 
 
-def test_goal_preflight_attaches_configured_aqualabs_store_toolset() -> None:
+def test_recommended_browser_namespace_stays_disconnected_until_explicit_load() -> None:
+    registry = GoalToolRegistry("account", ["browser-use"], ["browser-use"], [])
+    context = SimpleNamespace(state={})
+    with patch("tools.goal_tool_registry.connected_playwright_toolset", new=AsyncMock(side_effect=RuntimeError("Browser disconnected."))) as connect:
+        available = asyncio.run(registry.get_tools(SimpleNamespace(state={})))
+        assert [tool.name for tool in available] == ["load_goal_tools"]
+        connect.assert_not_awaited()
+        result = asyncio.run(registry.load_goal_tools(["browser-use"], context))
+    assert result == {"status": "failed", "error": "Browser disconnected."}
+    assert context.state == {}
+    connect.assert_awaited_once_with()
+
+
+def test_loaded_goal_tools_refresh_during_the_same_adk_invocation() -> None:
+    browser_tabs = SimpleNamespace(name="browser_tabs")
+    registry = GoalToolRegistry("account", ["browser-use"], ["browser-use"], [])
+    registry._tools["browser-use"] = [browser_tabs]
+    context = SimpleNamespace(invocation_id="same-invocation", state={})
+
+    initial = asyncio.run(registry.get_tools_with_prefix(context))
+    assert [tool.name for tool in initial] == ["load_goal_tools"]
+
+    context.state["loaded_goal_tool_ids"] = ["browser-use"]
+    refreshed = asyncio.run(registry.get_tools_with_prefix(context))
+    assert [tool.name for tool in refreshed] == ["load_goal_tools", "browser_tabs"]
+
+
+def test_goal_preflight_loads_aqualabs_store_only_when_requested() -> None:
     with TestClient(app) as client:
         account = create_account(client, "store-worker@example.com", "Store Worker")
         goal_payload = client.post("/api/goals", headers=account_headers(account["id"]), json={
@@ -494,14 +550,44 @@ def test_goal_preflight_attaches_configured_aqualabs_store_toolset() -> None:
         assignment = session.get(GoalAssignment, assignment_id)
         session.expunge(assignment)
 
+    store_tool = SimpleNamespace(name="find_customer_orders")
     store_toolset = MagicMock()
+    store_toolset.get_tools_with_prefix = AsyncMock(return_value=[store_tool])
+    store_toolset.close = AsyncMock()
     manager = GoalTaskManager()
-    with patch("app.goal_tasks.configured_aqualabs_store_toolset", new=AsyncMock(return_value=store_toolset)) as configured:
+    with patch("tools.goal_tool_registry.configured_aqualabs_store_toolset", new=AsyncMock(return_value=store_toolset)) as configured:
         tools, toolsets = asyncio.run(manager._preflight(account["id"], goal, assignment))
+        configured.assert_not_awaited()
+        registry = toolsets[0]
+        context = SimpleNamespace(state={})
+        result = asyncio.run(registry.load_goal_tools(["aqualabs-store"], context))
+        configured.assert_awaited_once_with()
+        assert result["status"] == "loaded"
+        loaded_tools = asyncio.run(registry.get_tools(SimpleNamespace(state=context.state)))
+        assert [tool.name for tool in loaded_tools] == ["load_goal_tools", "find_customer_orders"]
+        asyncio.run(registry.close())
+    assert len(tools) == 6
 
-    configured.assert_awaited_once_with()
-    assert store_toolset in tools
-    assert toolsets == [store_toolset]
+
+def test_goal_client_tools_resolve_only_from_the_front_desk_directory() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "client-tools@example.com", "Client Tools")
+        headers = account_headers(account["id"])
+        payload = {"nodes": [
+            {"id": "victor-client", "parent_id": None, "name": "Victor Bash", "kind": "client"},
+            {"id": "victor-profile", "parent_id": "victor-client", "name": "Client Profile", "kind": "profile", "content": "Email: victor@example.com\nSummary: AquaLabs customer."},
+        ]}
+        assert client.put("/api/filesystem/sync", headers=headers, json=payload).status_code == 200
+    context = SimpleNamespace(state={"account_id": account["id"], "client_id": "victor-client"})
+    assert list_clients(context) == {
+        "status": "completed",
+        "clients": [{"id": "victor-client", "name": "Victor Bash"}],
+    }
+    profile = read_client_profile(context)
+    assert profile["status"] == "completed"
+    assert profile["client"]["name"] == "Victor Bash"
+    assert "victor@example.com" in profile["client"]["profile"]
+    assert read_client_profile(context, "someone-from-slack")["status"] == "not_found"
 
 
 def test_answering_a_blocking_question_resumes_with_the_answer() -> None:
@@ -522,6 +608,33 @@ def test_answering_a_blocking_question_resumes_with_the_answer() -> None:
         resumed_instruction = start.await_args.args[2]
         assert "Front Desk" in resumed_instruction
         assert "Continue the goal" in resumed_instruction
+
+
+def test_open_questions_excludes_questions_from_inactive_tasks() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "questions@example.com", "Questions")
+        headers = account_headers(account["id"])
+        goal = client.post("/api/goals", headers=headers, json={
+            "client_id": "client-questions",
+            "text": "Resolve the question.",
+            "skill_ids": [],
+            "plugin_ids": [],
+        }).json()
+        with SessionLocal() as session:
+            blocked = GoalAssignment(goal_id=goal["id"], instruction="Blocked task", status="blocked", phase="blocked", current_step="Which account?")
+            cancelled = GoalAssignment(goal_id=goal["id"], instruction="Cancelled task", status="cancelled", phase="cancelled")
+            session.add_all([blocked, cancelled])
+            session.commit()
+            goal_row = session.get(Goal, goal["id"])
+            goal_row.run_state = "blocked"
+            session.commit()
+            open_question = create_notification(session, account["id"], goal["id"], "clarification", "Which account?", blocked.id)
+            create_notification(session, account["id"], goal["id"], "clarification", "Superseded question", blocked.id)
+            create_notification(session, account["id"], goal["id"], "clarification", "Stale question", cancelled.id)
+
+        response = client.get("/api/notifications", headers=headers, params={"open_questions": "true"})
+        assert response.status_code == 200
+        assert [item["id"] for item in response.json()] == [open_question["id"]]
 
 
 def test_workspace_preflight_only_probes_enabled_services() -> None:
@@ -763,6 +876,22 @@ def test_planner_creates_ordered_persistent_tasks_and_updates_queued_work() -> N
         steered = session.get(GoalAssignment, task_ids[0])
         assert steered and steered.status == "queued"
         assert steered.instruction == "Prepare the verified outcome using the new client constraint."
+        steered.status = "failed"
+        steered.phase = "failed"
+        steered.progress = 70
+        steered.report = "The previous tool declaration was invalid."
+        steered.evidence = json.dumps(["stale evidence"])
+        session.commit()
+
+    retry_plan = GoalPlan(operations=[GoalTaskOperation(action="retry", task_id=task_ids[0], instruction="Retry the same outcome with the corrected tool declaration.")])
+    with patch("app.goal_tasks.create_goal_planner_runner"), patch("app.goal_tasks.plan_goal", new=AsyncMock(return_value=retry_plan)):
+        retried_ids = asyncio.run(manager._planned_assignments(account["id"], goal, "Retry the failed task."))
+    assert task_ids[0] in retried_ids
+    with SessionLocal() as session:
+        retried = session.get(GoalAssignment, task_ids[0])
+        assert retried and retried.status == "queued" and retried.phase == "queued"
+        assert retried.progress == 0 and retried.report == "" and json.loads(retried.evidence) == []
+        assert retried.instruction == "Retry the same outcome with the corrected tool declaration."
 
     cancel_plan = GoalPlan(operations=[GoalTaskOperation(action="cancel", task_id=task_ids[1])])
     with patch("app.goal_tasks.create_goal_planner_runner"), patch("app.goal_tasks.plan_goal", new=AsyncMock(return_value=cancel_plan)):
@@ -778,7 +907,7 @@ def test_planner_creates_ordered_persistent_tasks_and_updates_queued_work() -> N
     assert reused == [task_ids[0]]
 
 
-def test_restart_requeues_the_same_running_task_identity() -> None:
+def test_restart_pauses_interrupted_task_without_starting_it() -> None:
     with TestClient(app) as client:
         account = create_account(client, "recover-task@example.com", "Recover Task")
         goal_payload = client.post("/api/goals", headers=account_headers(account["id"]), json={
@@ -796,12 +925,15 @@ def test_restart_requeues_the_same_running_task_identity() -> None:
     manager = GoalTaskManager()
     with patch.object(manager, "start", new=AsyncMock(return_value=True)) as start:
         asyncio.run(manager.recover())
-    assert (account["id"], goal_payload["id"]) in [call.args for call in start.await_args_list]
+    start.assert_not_awaited()
     with SessionLocal() as session:
         recovered = session.get(GoalAssignment, task_id)
+        goal = session.get(Goal, goal_payload["id"])
         assert recovered and recovered.status == "queued"
         assert recovered.current_step == "Reading the client evidence."
         assert recovered.finished_at is None
+        assert goal and goal.status == "paused"
+        assert goal.run_state == "paused"
 
 
 def test_browser_preview_is_persisted_and_account_scoped() -> None:
@@ -901,6 +1033,20 @@ def test_browser_preflight_executes_a_real_tabs_command() -> None:
     call_tool.assert_awaited_once_with("browser_tabs", arguments={"action": "list"})
 
 
+def test_browser_toolset_binds_the_configured_chrome_profile() -> None:
+    settings = SimpleNamespace(
+        playwright_extension_token="extension-token",
+        playwright_profile_directory="Profile 3",
+    )
+
+    with patch.object(playwright_browser, "get_settings", return_value=settings):
+        toolset = playwright_browser.create_playwright_toolset()
+
+    environment = toolset._connection_params.server_params.env
+    assert environment["PLAYWRIGHT_MCP_EXTENSION_TOKEN"] == "extension-token"
+    assert environment["PLAYWRIGHT_MCP_PROFILE_DIRECTORY"] == "Profile 3"
+
+
 def test_browser_preview_capture_reads_the_task_scoped_screenshot() -> None:
     async def exercise() -> bytes:
         with TemporaryDirectory() as directory:
@@ -919,6 +1065,7 @@ def test_browser_preview_capture_reads_the_task_scoped_screenshot() -> None:
             return image
 
     assert asyncio.run(exercise()) == b"browser-preview"
+
 
 def test_voice_ticket_is_authenticated_scoped_and_uses_sherpa_live_contract() -> None:
     with TestClient(app) as client:
@@ -973,6 +1120,18 @@ def test_github_repository_access_is_account_scoped_and_removed_with_plugin() ->
         assert client.delete("/api/plugins/github", headers=first_headers).status_code == 200
         with SessionLocal() as session:
             assert session.query(GitHubRepositoryAccess).filter_by(account_id=first["id"]).count() == 0
+
+
+def test_direct_client_call_cannot_expand_into_adjacent_work_or_false_contact() -> None:
+    assert "A direct request to call or speak with a client is one live-call task" in PLANNER_INSTRUCTION
+    assert "Do not reinterpret \"call\" as \"open a support case,\" \"post to Slack,\" or \"schedule a future call.\"" in PLANNER_INSTRUCTION
+    assert "A request to call or speak with a client without a future time means an immediate call" in WORKER_INSTRUCTION
+    assert "Do not ask the Front Desk owner to choose a time for an immediate call" in WORKER_INSTRUCTION
+    assert "ask the client for availability through the client's communication channel" in WORKER_INSTRUCTION
+    assert "A request to call a client without a future time is an immediate call now" in PLANNER_INSTRUCTION
+    assert "posting an internal notification" in WORKER_INSTRUCTION
+    assert "Client identity comes only from Front Desk's client directory and profiles" in PLANNER_INSTRUCTION
+    assert "Never search Gmail, Slack, Drive, Jira, the browser" in WORKER_INSTRUCTION
 
 
 def create_account(client: TestClient, email: str, name: str) -> dict[str, str]:

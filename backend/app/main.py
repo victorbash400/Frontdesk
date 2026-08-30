@@ -130,6 +130,14 @@ def get_mailbox_threads(account_id: str = Depends(require_account_id), session: 
     return list_mailbox_threads(session, account_id)
 
 
+@app.post("/api/mailbox/messages/{message_id}/retry", status_code=202)
+async def retry_email_agent(message_id: str, account_id: str = Depends(require_account_id)) -> dict[str, str]:
+    try:
+        return await email_agent.retry(account_id, message_id)
+    except RuntimeError as error:
+        raise HTTPException(404, str(error)) from error
+
+
 @app.post("/api/mailbox/titan/connect")
 async def post_titan_mailbox(body: TitanMailboxConnect, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> dict[str, object]:
     try:
@@ -250,8 +258,8 @@ def post_goal_automation(goal_id: str, body: AutomationCreate, account_id: str =
 
 
 @app.get("/api/notifications")
-def get_notifications(client_id: str | None = None, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> list[dict[str, object]]:
-    return list_notifications(session, account_id, client_id)
+def get_notifications(client_id: str | None = None, open_questions: bool = False, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> list[dict[str, object]]:
+    return list_notifications(session, account_id, client_id, open_questions=open_questions)
 
 
 @app.get("/api/events/stream")

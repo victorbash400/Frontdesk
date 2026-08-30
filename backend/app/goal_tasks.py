@@ -4,6 +4,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 from google.adk.agents import Agent
 from google.adk.agents.run_config import RunConfig, StreamingMode
@@ -17,22 +18,23 @@ from app.chat_stream import sessions
 from app.config import get_settings
 from app.database import SessionLocal
 from app.event_stream import account_events
-from app.goal_tool_ui import describe_goal_tool, goal_requires_browser
+from app.goal_tool_ui import describe_goal_tool
 from app.goals import create_notification, require_goal
-from app.models import Goal, GoalActivity, GoalAssignment, GoalBrowserPreview, GoalTaskUpdate, OAuthConnection, PluginInstallation, Skill
+from app.models import Goal, GoalActivity, GoalAssignment, GoalBrowserPreview, GoalTaskUpdate, PluginInstallation, Skill
 from app.skills import list_skills
 from app.mailboxes import titan_tools
 from agents.goal_planner import create_goal_planner_runner, plan_goal
-from tools.browser_use import capture_browser_preview, connected_playwright_toolset
-from tools.aqualabs_store import configured_aqualabs_store_toolset
-from tools.external_plugins import connected_external_plugin_toolset
+from tools.client_context import list_clients, read_client_profile
+from tools.goal_tool_registry import GoalToolRegistry
 from tools.goal_control import ask_goal_question, complete_goal, update_goal_progress
 from tools.tool_failures import begin_single_tool, finish_single_tool, stop_on_tool_error
-from tools.workspace import preflight_workspace, workspace_tools
-from meetings.tools import create_client_meeting
 
 
-WORKER_INSTRUCTION = """You are Front Desk's goal worker. Complete the assigned goal with only the tools provided for this run. Every provided tool was selected for this goal and verified before you started.
+WORKER_INSTRUCTION = """You are Front Desk's goal worker. Complete the assigned goal with the direct tools and plugin namespaces available for this run. Direct tools are always available; plugin namespaces validate their connection only when you load them.
+
+Preserve the exact requested outcome. Do not add optional research artifacts, tickets, account notes, Slack posts, email, scheduling, or follow-up work unless the task requires them. A request to call or speak with a client without a future time means an immediate call: create a 30-minute meeting beginning at the current time, invite the client's profile email, join it, and wait silently for the client. Do not ask the Front Desk owner to choose a time for an immediate call. A call is complete only after an actual live meeting with that client. Creating a support case, posting an internal notification, or proposing a meeting time is not contact and must never be reported as contact. For an explicitly future meeting with no confirmed time, ask the client for availability through the client's communication channel and persist the external wait. Use ask_goal_question only for a decision or ambiguity that the Front Desk owner must resolve; never use it to ask the owner for information that should come from the client.
+
+Front Desk's client directory is the only authority for client identity. The task session contains the assigned client ID, so call read_client_profile without an ID first. If the request names a different or unclear client, call list_clients and match only an unambiguous client name, then read_client_profile with its exact ID. Never search Gmail, Slack, Drive, Jira, the browser, or another plugin to discover who a client is. If the client is absent or ambiguous in the Front Desk list, use ask_goal_question and do not guess. After identity is resolved, load only the plugin namespace required for the next concrete action. Do not load unrelated namespaces speculatively.
 
 Report only observed results. Use update_goal_progress after each meaningful milestone. Each update must state what you learned, changed, or verified and what you will do next. Never write filler such as task accepted, starting, working, or waiting.
 
@@ -40,17 +42,22 @@ Call exactly one tool per model turn. Never emit parallel tool calls. A failed t
 
 Connected remote plugins expose the complete toolset advertised by their MCP servers. For Google Workspace, prefer a specialized tool when one exists; use workspace_google_api_request for any operation covered by the granted Workspace scopes that does not have a specialized tool. Google Docs editor files must be read through the Docs API or exported through Drive files.export; Drive files.get?alt=media is only for binary files. If a read reports that exact download/export mismatch, correct the request once and continue. When the goal explicitly asks to open or show a resource and browser tools are available, open its returned URL in Chrome and verify the page.
 
+Before any customer-data mutation, resolve one unique actionable target from current evidence. A customer name, approximate amount, product description, or other partial attribute is not an identifier. For order cancellation, compare both subtotal and total, exclude orders already cancelled, delivered, or refunded, and proceed only when exactly one remaining order matches the customer's words. If zero or multiple actionable candidates remain, use ask_goal_question to request the order number or another distinguishing detail. Never mutate a historical record merely because it is the closest match.
+
 Finish only with complete_goal. Provide a concise summary, specific observed evidence, and one output entry for every expected output on the task. Each output entry must use the expected output text as its name and include its observed evidence. If required access or information is missing, use ask_goal_question. Never claim completion from intention, a dispatched action, or an unverified tool result.
 """
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 
 class GoalTaskManager:
     def __init__(self) -> None:
         self._workers: dict[str, asyncio.Task[None]] = {}
+        self._delegated_workers: dict[str, asyncio.Task[None]] = {}
+        self._meeting_submission_workers: dict[str, asyncio.Task[None]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._replanning: set[str] = set()
+        self._meeting_submissions: dict[str, dict[str, object]] = {}
 
     async def start(self, account_id: str, goal_id: str, instruction: str | None = None) -> bool:
         existing = self._workers.get(goal_id)
@@ -61,19 +68,120 @@ class GoalTaskManager:
         worker.add_done_callback(lambda finished: self._workers.pop(goal_id, None) if self._workers.get(goal_id) is finished else None)
         return True
 
+    async def delegate_from_meeting(
+        self,
+        account_id: str,
+        goal_id: str,
+        meeting_id: str,
+        instruction: str,
+    ) -> dict[str, object]:
+        """Plan and run bounded meeting work without interrupting the owning goal worker."""
+        direction = instruction.strip()
+        if not direction:
+            return {"status": "failed", "error": "A coordinator instruction is required."}
+        goal = self._goal(account_id, goal_id)
+        if goal.status != "active":
+            return {"status": "failed", "error": "Only an active meeting goal can accept delegated work."}
+        submission_id = f"submission_{uuid4().hex}"
+        self._meeting_submissions[submission_id] = {
+            "id": submission_id,
+            "account_id": account_id,
+            "goal_id": goal_id,
+            "meeting_id": meeting_id,
+            "instruction": direction,
+            "status": "received",
+            "task_id": None,
+            "error": None,
+        }
+        worker = asyncio.create_task(
+            self._admit_meeting_submission(submission_id),
+            name=f"meeting-submission-{submission_id}",
+        )
+        self._meeting_submission_workers[submission_id] = worker
+        worker.add_done_callback(
+            lambda finished: self._meeting_submission_workers.pop(submission_id, None)
+            if self._meeting_submission_workers.get(submission_id) is finished
+            else None
+        )
+        logger.info("meeting=%s submission=%s coordinator=accepted instruction=%r", meeting_id, submission_id, direction)
+        return {"status": "accepted", "goal_id": goal_id, "submission_id": submission_id}
+
+    async def _admit_meeting_submission(self, submission_id: str) -> None:
+        submission = self._meeting_submissions[submission_id]
+        account_id = str(submission["account_id"])
+        goal_id = str(submission["goal_id"])
+        meeting_id = str(submission["meeting_id"])
+        try:
+            from meetings.coordinator_planner import plan_meeting_assignment
+
+            assignment_id, client_id = await plan_meeting_assignment(
+                account_id, goal_id, meeting_id, str(submission["instruction"]),
+            )
+            submission.update(status="planned", task_id=assignment_id)
+            account_events.publish(account_id, {"type": "goals_changed", "client_id": client_id, "goal_id": goal_id})
+            account_events.publish(account_id, {"type": "meeting_submission_changed", "meeting_id": meeting_id, **self._meeting_submission_snapshot(submission)})
+            self._publish_task(account_id, assignment_id)
+            logger.info("meeting=%s submission=%s coordinator=planned task=%s", meeting_id, submission_id, assignment_id)
+            await self._run_delegated_assignments(account_id, goal_id, [assignment_id])
+        except asyncio.CancelledError:
+            submission.update(status="cancelled", error=None)
+            account_events.publish(
+                account_id,
+                {"type": "meeting_submission_changed", "meeting_id": meeting_id, **self._meeting_submission_snapshot(submission)},
+            )
+            raise
+        except Exception as error:
+            message = str(error).strip() or type(error).__name__
+            submission.update(status="failed", error=message)
+            account_events.publish(account_id, {"type": "meeting_submission_changed", "meeting_id": meeting_id, **self._meeting_submission_snapshot(submission)})
+            logger.exception("meeting=%s submission=%s coordinator=failed error=%s", meeting_id, submission_id, message)
+
+    def meeting_submissions(self, account_id: str, meeting_id: str) -> list[dict[str, object]]:
+        return [
+            self._meeting_submission_snapshot(item)
+            for item in self._meeting_submissions.values()
+            if item["account_id"] == account_id and item["meeting_id"] == meeting_id
+        ]
+
+    @staticmethod
+    def _meeting_submission_snapshot(submission: dict[str, object]) -> dict[str, object]:
+        return {key: submission.get(key) for key in ("id", "status", "task_id", "instruction", "error")}
+
+    async def _run_delegated_assignments(self, account_id: str, goal_id: str, assignment_ids: list[str]) -> None:
+        for assignment_id in assignment_ids:
+            if await self._run_assignment(account_id, goal_id, assignment_id) != "completed":
+                return
+        self._complete_goal(account_id, goal_id)
+
     async def cancel(self, goal_id: str) -> bool:
         worker = self._workers.get(goal_id)
-        if not worker or worker.done():
-            return False
-        worker.cancel()
-        await asyncio.gather(worker, return_exceptions=True)
-        return True
+        with SessionLocal() as session:
+            delegated_ids = set(session.scalars(select(GoalAssignment.id).where(
+                GoalAssignment.goal_id == goal_id,
+                GoalAssignment.auxiliary.is_(True),
+            )))
+        delegated = [
+            delegated_worker
+            for task_id, delegated_worker in self._delegated_workers.items()
+            if task_id in delegated_ids and not delegated_worker.done()
+        ]
+        submissions = [
+            submission_worker
+            for submission_id, submission_worker in self._meeting_submission_workers.items()
+            if self._meeting_submissions[submission_id]["goal_id"] == goal_id and not submission_worker.done()
+        ]
+        active = [item for item in [worker, *delegated, *submissions] if item and not item.done()]
+        for item in active:
+            item.cancel()
+        if active:
+            await asyncio.gather(*active, return_exceptions=True)
+        return bool(active)
 
     async def steer_task(self, account_id: str, task_id: str, instruction: str) -> dict[str, object]:
         task = self._owned_assignment(account_id, task_id)
         if task.status not in {"running", "blocked"}:
             return {"status": "failed", "error": "Only a running or blocked task can be steered."}
-        worker = self._workers.get(task.goal_id)
+        worker = self._delegated_workers.get(task_id) if task.auxiliary else self._workers.get(task.goal_id)
         if worker and not worker.done():
             worker.cancel()
             await asyncio.gather(worker, return_exceptions=True)
@@ -88,7 +196,12 @@ class GoalTaskManager:
             persisted.next_step = ""
             persisted.finished_at = None
             session.commit()
-        await self.start(account_id, task.goal_id)
+        if task.auxiliary:
+            worker = asyncio.create_task(self._run_delegated_assignments(account_id, task.goal_id, [task_id]), name=f"meeting-delegation-{task_id}")
+            self._delegated_workers[task_id] = worker
+            worker.add_done_callback(lambda finished: self._delegated_workers.pop(task_id, None) if self._delegated_workers.get(task_id) is finished else None)
+        else:
+            await self.start(account_id, task.goal_id)
         return {"status": "steered", "task_id": task_id, "goal_id": task.goal_id}
 
     async def cancel_task(self, account_id: str, task_id: str) -> dict[str, object]:
@@ -96,14 +209,20 @@ class GoalTaskManager:
         if task.status not in {"queued", "running", "blocked"}:
             return {"status": "failed", "error": "Only queued, running, or blocked tasks can be cancelled."}
         if task.status == "running":
-            worker = self._workers.get(task.goal_id)
+            worker = self._delegated_workers.get(task_id) if task.auxiliary else self._workers.get(task.goal_id)
             if worker and not worker.done():
                 worker.cancel()
                 await asyncio.gather(worker, return_exceptions=True)
         self._set_assignment(task_id, status="cancelled", phase="cancelled", finished_at=datetime.now(timezone.utc), current_step="Cancelled by the user.")
+        self._publish_task(account_id, task_id)
         return {"status": "cancelled", "task_id": task_id, "goal_id": task.goal_id}
 
-    async def revise_goal(self, account_id: str, goal_id: str, instruction: str) -> dict[str, object]:
+    async def revise_goal(
+        self,
+        account_id: str,
+        goal_id: str,
+        instruction: str,
+    ) -> dict[str, object]:
         """Apply a supervisor request through the planner, then run its authoritative board."""
         direction = instruction.strip()
         if not direction:
@@ -122,6 +241,8 @@ class GoalTaskManager:
         try:
             assignment_ids = await self._planned_assignments(account_id, self._goal(account_id, goal_id), direction)
         except Exception:
+            if self._goal(account_id, goal_id).status != "active":
+                raise
             self._requeue_running_assignments(goal_id)
             await self.start(account_id, goal_id)
             raise
@@ -130,22 +251,25 @@ class GoalTaskManager:
         return {"status": "planned", "goal_id": goal_id, "task_ids": assignment_ids}
 
     async def recover(self) -> None:
+        """Pause interrupted user goals; startup must never execute external work."""
         with SessionLocal() as session:
             interrupted = list(session.scalars(select(GoalAssignment).where(GoalAssignment.status.in_(("queued", "running")))))
-            recoverable: set[tuple[str, str]] = set()
             for assignment in interrupted:
                 goal = session.get(Goal, assignment.goal_id)
                 if goal and goal.status == "active":
+                    previous_status = assignment.status
                     if assignment.status == "running":
                         assignment.status = "queued"
                         assignment.phase = "queued"
                         assignment.finished_at = None
-                    recoverable.add((goal.account_id, goal.id))
-                    goal.run_state = "queued"
+                    goal.status = "paused"
+                    goal.run_state = "paused"
                     goal.current_step = assignment.current_step or assignment.title
+                    logger.info(
+                        "goal=%s task=%s startup=paused previous_status=%s",
+                        goal.id, assignment.id, previous_status,
+                    )
             session.commit()
-        for account_id, goal_id in recoverable:
-            await self.start(account_id, goal_id)
 
     async def _orchestrate(self, account_id: str, goal_id: str, instruction: str | None = None) -> None:
         lock = self._locks.setdefault(goal_id, asyncio.Lock())
@@ -177,12 +301,14 @@ class GoalTaskManager:
         try:
             goal = self._goal(account_id, goal_id)
             tools, toolsets = await self._preflight(account_id, goal, assignment)
+            logger.info("goal=%s task=%s worker=starting skills=%s plugins=%s instruction=%r", goal_id, assignment_id, assignment.skill_ids, goal.plugin_ids, instruction)
             self._set_assignment(assignment_id, status="running", phase="working", started_at=datetime.now(timezone.utc), current_step=instruction)
             self._set_goal_state(goal_id, "running", instruction)
+            self._publish_task(account_id, assignment_id)
             self._publish(account_id, goal_id, "running")
             selected_skills = self._assignment_skills(account_id, assignment)
             runner = self._runner(tools, selected_skills)
-            session_id = hashlib.sha256(f"{account_id}:goal-worker:{goal_id}:{assignment_id}".encode()).hexdigest()
+            session_id = hashlib.sha256(f"{account_id}:goal-worker:{goal_id}:{assignment_id}:{uuid4().hex}".encode()).hexdigest()
             existing = await sessions.get_session(app_name=runner.app_name, user_id=account_id, session_id=session_id)
             if not existing:
                 await sessions.create_session(app_name=runner.app_name, user_id=account_id, session_id=session_id, state={
@@ -194,6 +320,7 @@ class GoalTaskManager:
                 })
             completion: dict[str, Any] | None = None
             blocked = False
+            external_wait = False
             seen_calls: set[str] = set()
             seen_responses: set[str] = set()
             events = runner.run_async(
@@ -211,10 +338,10 @@ class GoalTaskManager:
                         continue
                     seen_calls.add(call_id)
                     event_args = dict(call.args or {})
+                    logger.info("goal=%s task=%s tool=%s status=started args=%s", goal_id, assignment_id, call.name, json.dumps(event_args, default=str, separators=(",", ":")))
                     message, service = describe_goal_tool(call.name, event_args)
                     self._set_assignment(assignment_id, current_step=message)
                     self._set_goal_state(goal_id, "running", message)
-                    account_events.publish(account_id, {"type": "goals_changed", "client_id": goal.client_id, "goal_id": goal_id})
                     account_events.publish(account_id, {"type": "goal_tool", "goal_id": goal_id, "task_id": assignment_id, "id": call_id, "name": call.name, "args": event_args, "message": message, "service": service})
                 for response in event.get_function_responses() if hasattr(event, "get_function_responses") else []:
                     response_id = response.id or response.name
@@ -223,30 +350,34 @@ class GoalTaskManager:
                     seen_responses.add(response_id)
                     payload = dict(response.response or {})
                     failed = _tool_failed(payload)
+                    logger.info("goal=%s task=%s tool=%s status=%s result=%s", goal_id, assignment_id, response.name, "failed" if failed else "completed", json.dumps(payload, default=str, separators=(",", ":")))
                     if failed:
                         message = _tool_error_message(response.name, payload)
-                        self._record_task_update(account_id, goal_id, assignment_id, "working", self._assignment(assignment_id).progress, message, "Choose a corrected action using the tool result.")
                         account_events.publish(account_id, {"type": "goal_tool_result", "goal_id": goal_id, "task_id": assignment_id, "id": response_id, "name": response.name, "status": "error", "error": message})
                     elif response.name == "update_goal_progress":
                         self._record_update(account_id, goal_id, assignment_id, payload)
                     elif response.name == "complete_goal":
                         completion = payload
                     elif response.name == "ask_goal_question":
-                        self._record_question(account_id, goal_id, payload)
+                        self._record_question(account_id, goal_id, assignment_id, payload)
                         blocked = bool(payload.get("blocking"))
+                    elif response.name == "wait_for_client_in_meeting" and payload.get("status") == "waiting":
+                        external_wait = True
+                        self._record_activity(account_id, goal_id, "external_wait", str(payload.get("reason") or "Waiting for the client to join the meeting."), json.dumps({"task_id": assignment_id, "meeting_id": payload.get("meeting_id")}))
                     else:
                         preview = _workspace_preview(response.name, payload)
                         if preview:
                             self._set_assignment(assignment_id, preview_target=json.dumps({**preview, "revision": response_id}))
                             account_events.publish(account_id, {"type": "goals_changed", "client_id": goal.client_id, "goal_id": goal_id})
-                        elif response.name.startswith("browser_") and response.name != "browser_take_screenshot":
-                            if await self._store_browser_preview(toolsets, assignment_id, response_id):
-                                account_events.publish(account_id, {"type": "goals_changed", "client_id": goal.client_id, "goal_id": goal_id})
                         account_events.publish(account_id, {"type": "goal_tool_result", "goal_id": goal_id, "task_id": assignment_id, "id": response_id, "name": response.name, "status": "done"})
-            if blocked:
-                self._set_assignment(assignment_id, status="blocked", phase="blocked", finished_at=datetime.now(timezone.utc), report="Waiting for the user's answer.")
+            if blocked or external_wait:
+                report = "Waiting for the client to join the emailed meeting link." if external_wait else "Waiting for the user's answer."
+                phase = "external_wait" if external_wait else "blocked"
+                self._set_assignment(assignment_id, status="blocked", phase=phase, finished_at=datetime.now(timezone.utc), report=report)
                 self._set_goal_state(goal_id, "blocked", self._assignment(assignment_id).current_step)
-                self._publish(account_id, goal_id, "blocked")
+                self._publish_task(account_id, assignment_id)
+                self._publish(account_id, goal_id, "blocked", report)
+                logger.info("goal=%s task=%s worker=stopped phase=%s reason=%r", goal_id, assignment_id, phase, report)
                 return "blocked"
             self._complete_assignment(account_id, goal_id, assignment_id, completion)
             return "completed"
@@ -257,9 +388,13 @@ class GoalTaskManager:
         except Exception as error:
             message = str(error).strip() or error.__class__.__name__
             self._set_assignment(assignment_id, status="failed", phase="failed", finished_at=datetime.now(timezone.utc), report=message, current_step=message)
-            self._set_goal_state(goal_id, "failed", message)
+            if not assignment.auxiliary:
+                self._set_goal_state(goal_id, "failed", message)
             self._record_activity(account_id, goal_id, "run_failed", message)
-            self._publish(account_id, goal_id, "failed", message)
+            self._publish_task(account_id, assignment_id)
+            if not assignment.auxiliary:
+                self._publish(account_id, goal_id, "failed", message)
+            logger.exception("goal=%s task=%s worker=failed error=%s", goal_id, assignment_id, message)
             return "failed"
         finally:
             for toolset in toolsets:
@@ -268,9 +403,17 @@ class GoalTaskManager:
                 except Exception as error:
                     logger.warning("task=%s toolset_cleanup=failed error=%s", assignment_id, error)
 
-    async def _planned_assignments(self, account_id: str, goal: Goal, instruction: str | None) -> list[str]:
+    async def _planned_assignments(
+        self,
+        account_id: str,
+        goal: Goal,
+        instruction: str | None,
+    ) -> list[str]:
         with SessionLocal() as session:
-            existing = list(session.scalars(select(GoalAssignment).where(GoalAssignment.goal_id == goal.id).order_by(GoalAssignment.created_at)))
+            existing = list(session.scalars(select(GoalAssignment).where(
+                GoalAssignment.goal_id == goal.id,
+                GoalAssignment.auxiliary.is_(False),
+            ).order_by(GoalAssignment.created_at)))
             pending = [item.id for item in existing if item.status == "queued"]
             if pending and not instruction:
                 return pending
@@ -286,6 +429,7 @@ class GoalTaskManager:
         skill_index = [{"id": item["id"], "name": item["name"], "description": item["description"], "required_plugin_ids": item["requiredPluginIds"], "available": set(item["requiredPluginIds"]).issubset(installed_for_plan)} for item in skill_catalog]
         available_skill_ids = {str(item["id"]) for item in skill_catalog}
         plan = await plan_goal(planner, account_id, planner_session_id, planning_request, ledger, skill_index, json.loads(goal.skill_ids))
+        logger.info("goal=%s planner=completed request=%r operations=%s", goal.id, planning_request, plan.model_dump_json())
         keys: dict[str, str] = {}
         existing_by_id = {item.id: item for item in existing}
         assignment_ids: list[str] = []
@@ -294,6 +438,8 @@ class GoalTaskManager:
             skills_by_id = {skill.id: skill for skill in skill_rows}
             installed_plugins = set(session.scalars(select(PluginInstallation.plugin_id).where(PluginInstallation.account_id == account_id)))
             persisted_goal = require_goal(session, account_id, goal.id)
+            if persisted_goal.status != "active":
+                raise RuntimeError("The goal changed while its plan was being prepared. Reload its current state before revising it.")
             selected_plugins = set(json.loads(persisted_goal.plugin_ids))
             for operation in plan.operations:
                 unknown_skills = [skill_id for skill_id in operation.skill_ids if skill_id not in available_skill_ids]
@@ -351,15 +497,46 @@ class GoalTaskManager:
                     persisted.evidence = "[]"
                     persisted.skill_ids = json.dumps(operation.skill_ids)
                     assignment_ids.append(persisted.id)
+                elif operation.action == "retry":
+                    if persisted.status != "failed" or not operation.instruction:
+                        raise RuntimeError("The goal planner can retry only failed tasks with a complete instruction.")
+                    persisted.title = operation.title or persisted.title
+                    persisted.instruction = operation.instruction
+                    persisted.status = "queued"
+                    persisted.phase = "queued"
+                    persisted.current_step = persisted.title
+                    persisted.next_step = ""
+                    persisted.progress = 0
+                    persisted.started_at = None
+                    persisted.finished_at = None
+                    persisted.report = ""
+                    persisted.evidence = "[]"
+                    persisted.skill_ids = json.dumps(operation.skill_ids)
+                    assignment_ids.append(persisted.id)
                 elif operation.action == "cancel":
                     if persisted.status not in {"queued", "running", "blocked"}:
                         raise RuntimeError("The goal planner can cancel only active tasks.")
                     persisted.status = "cancelled"
                     persisted.phase = "cancelled"
                     persisted.finished_at = datetime.now(timezone.utc)
-            persisted_goal.plugin_ids = json.dumps(sorted(selected_plugins))
+            active_assignments = list(session.scalars(select(GoalAssignment).where(
+                GoalAssignment.goal_id == goal.id,
+                GoalAssignment.status != "cancelled",
+            )))
+            task_plugins = {
+                plugin_id
+                for task in active_assignments
+                for skill_id in json.loads(task.skill_ids)
+                if skill_id in skills_by_id
+                for plugin_id in json.loads(skills_by_id[skill_id].required_plugin_ids)
+            }
+            persisted_goal.plugin_ids = json.dumps(sorted(task_plugins or selected_plugins))
             session.commit()
-            remaining = list(session.scalars(select(GoalAssignment.id).where(GoalAssignment.goal_id == goal.id, GoalAssignment.status == "queued").order_by(GoalAssignment.created_at)))
+            remaining = list(session.scalars(select(GoalAssignment.id).where(
+                GoalAssignment.goal_id == goal.id,
+                GoalAssignment.status == "queued",
+                GoalAssignment.auxiliary.is_(False),
+            ).order_by(GoalAssignment.created_at)))
         assignment_ids.extend(item_id for item_id in remaining if item_id not in assignment_ids)
         if not assignment_ids and any(operation.action != "cancel" for operation in plan.operations):
             raise RuntimeError("The goal planner returned no executable task.")
@@ -369,48 +546,44 @@ class GoalTaskManager:
         return assignment_ids
 
     async def _preflight(self, account_id: str, goal: Goal, assignment: GoalAssignment) -> tuple[list[Any], list[Any]]:
-        plugin_ids = json.loads(goal.plugin_ids)
-        if not plugin_ids:
-            raise RuntimeError("This goal has no tools selected.")
+        plugin_ids = list(dict.fromkeys(json.loads(goal.plugin_ids)))
+        titan_functions = titan_tools(account_id)
         with SessionLocal() as session:
             installed = set(session.scalars(select(PluginInstallation.plugin_id).where(PluginInstallation.account_id == account_id)))
-            google_connected = session.scalar(select(OAuthConnection.id).where(OAuthConnection.account_id == account_id, OAuthConnection.provider == "google_workspace")) is not None
+            assigned_skills = list(session.scalars(select(Skill).where(
+                Skill.account_id == account_id,
+                Skill.id.in_(json.loads(assignment.skill_ids)),
+            ))) if json.loads(assignment.skill_ids) else []
         missing = [plugin_id for plugin_id in plugin_ids if plugin_id not in installed]
         if missing:
             raise RuntimeError(f"Selected plugins are not installed: {', '.join(missing)}")
-        tools: list[Any] = [update_goal_progress, ask_goal_question, complete_goal, *titan_tools(account_id)]
-        toolsets: list[Any] = []
-        for plugin_id in plugin_ids:
-            if plugin_id == "browser-use":
-                if not goal_requires_browser(assignment.instruction):
-                    continue
-                browser = await connected_playwright_toolset()
-                toolsets.append(browser)
-                tools.append(browser)
-            elif plugin_id == "google-workspace":
-                if not google_connected:
-                    raise RuntimeError("Google Workspace is not connected.")
-                await preflight_workspace(account_id)
-                workspace = workspace_tools(account_id)
-                if not workspace:
-                    raise RuntimeError("Google Workspace has no enabled tools.")
-                tools.extend(workspace)
-                tools.append(create_client_meeting)
-            elif plugin_id == "aqualabs-store":
-                store = await configured_aqualabs_store_toolset()
-                toolsets.append(store)
-                tools.append(store)
-            else:
-                external = await connected_external_plugin_toolset(account_id, plugin_id)
-                toolsets.append(external)
-                tools.append(external)
-        return tools, toolsets
+        allowed_ids = [
+            namespace
+            for plugin_id in plugin_ids
+            for namespace in _plugin_namespaces(plugin_id)
+        ]
+        if titan_functions:
+            allowed_ids.append("titan-mail")
+        initial_ids = _initial_tool_ids(assigned_skills, plugin_ids)
+        registry = GoalToolRegistry(account_id, allowed_ids, initial_ids, titan_functions)
+        tools: list[Any] = [
+            update_goal_progress,
+            ask_goal_question,
+            complete_goal,
+            list_clients,
+            read_client_profile,
+            registry,
+        ]
+        return tools, [registry]
 
     def _runner(self, tools: list[Any], skills: list[Skill]) -> Runner:
         settings = get_settings()
         model = Gemini(model=settings.gemini_model, client_kwargs={"vertexai": True, "project": settings.google_cloud_project, "location": settings.google_cloud_location}, retry_options=types.HttpRetryOptions(attempts=1))
         skill_instructions = "\n\n".join(f"Skill: {skill.name} (version {skill.version})\n{skill.instructions}" for skill in skills)
-        instruction = WORKER_INSTRUCTION + (f"\n\nSelected organization skills for this task:\n{skill_instructions}" if skill_instructions else "")
+        registry = next((tool for tool in tools if isinstance(tool, GoalToolRegistry)), None)
+        directory = registry.directory_prompt if registry else "No plugin namespaces are available for this goal."
+        call_instruction = "For a direct client call, create a Meet space without a Calendar event, email its exact link to the client's profile email, join it with join_client_meeting, then call wait_for_client_in_meeting and end this worker run. The dedicated meeting worker alone monitors the participant and handles audio. Never use raw browser controls to add Meet attendees, send Meet chat invitations, choose meeting media, join a Front Desk meeting, or monitor a participant."
+        instruction = f"{WORKER_INSTRUCTION}\n\n{call_instruction}\n\nPlugin namespace directory:\n{directory}" + (f"\n\nSelected organization skills for this task:\n{skill_instructions}" if skill_instructions else "")
         agent = Agent(name="front_desk_goal_worker", description="Completes one persistent Front Desk goal.", model=model, instruction=instruction, tools=tools, before_tool_callback=begin_single_tool, after_tool_callback=finish_single_tool, on_tool_error_callback=stop_on_tool_error, generate_content_config=types.GenerateContentConfig(thinking_config=types.ThinkingConfig(include_thoughts=True, thinking_level=types.ThinkingLevel.MEDIUM)))
         return Runner(app=App(name="front_desk_goal_worker", root_agent=agent), session_service=sessions)
 
@@ -476,6 +649,8 @@ class GoalTaskManager:
             goal = session.get(Goal, goal_id)
             if not goal:
                 return
+            if goal.status == "completed" and state != "completed":
+                return
             goal.run_state = state
             goal.current_step = current_step
             session.commit()
@@ -507,21 +682,25 @@ class GoalTaskManager:
             session.add(GoalTaskUpdate(assignment_id=assignment.id, phase=phase, progress=progress, message=message, next_step=next_step))
             session.commit()
             account_events.publish(account_id, {"type": "goals_changed", "client_id": goal.client_id, "goal_id": goal.id})
+        self._publish_task(account_id, assignment_id)
 
-    def _record_question(self, account_id: str, goal_id: str, payload: dict[str, Any]) -> None:
+    def _record_question(self, account_id: str, goal_id: str, assignment_id: str, payload: dict[str, Any]) -> None:
         question = str(payload.get("question") or "").strip()
         if not question:
             return
         with SessionLocal() as session:
-            create_notification(session, account_id, goal_id, "clarification", question)
+            create_notification(session, account_id, goal_id, "clarification", question, assignment_id)
+        self._set_assignment(assignment_id, current_step=question, next_step="Waiting for the Front Desk owner's answer.")
+        self._publish_task(account_id, assignment_id)
 
     async def _store_browser_preview(self, toolsets: list[Any], assignment_id: str, revision: str) -> bool:
         image: bytes | None = None
         for toolset in toolsets:
             try:
-                names = {tool.name for tool in await toolset.get_tools()}
-                if "browser_take_screenshot" in names:
-                    image = await capture_browser_preview(toolset, assignment_id)
+                capture = getattr(toolset, "capture_browser_preview", None)
+                if capture:
+                    image = await capture(assignment_id)
+                if image:
                     break
             except Exception as error:
                 logger.warning("task=%s browser_preview=failed error=%s", assignment_id, error)
@@ -572,14 +751,15 @@ class GoalTaskManager:
             session.add(GoalActivity(goal_id=goal.id, kind="task_completed", summary=summary, evidence=json.dumps({"task_id": assignment.id, "evidence": evidence, "outputs": outputs}, default=str)))
             session.commit()
             account_events.publish(account_id, {"type": "goals_changed", "client_id": goal.client_id, "goal_id": goal.id})
+        self._publish_task(account_id, assignment_id)
 
-    def _complete_goal(self, account_id: str, goal_id: str) -> None:
+    def _complete_goal(self, account_id: str, goal_id: str) -> bool:
         with SessionLocal() as session:
             goal = require_goal(session, account_id, goal_id)
             assignments = list(session.scalars(select(GoalAssignment).where(GoalAssignment.goal_id == goal.id)))
             required = [item for item in assignments if item.status != "cancelled"]
             if not required or any(item.status != "completed" for item in required):
-                raise RuntimeError("The goal cannot complete until every planned task is complete.")
+                return False
             summary = required[-1].report
             goal.status = "completed"
             goal.run_state = "completed"
@@ -590,6 +770,7 @@ class GoalTaskManager:
             session.commit()
             account_events.publish(account_id, {"type": "goals_changed", "client_id": goal.client_id, "goal_id": goal.id})
         self._publish(account_id, goal_id, "completed", summary)
+        return True
 
     def _cancel_active_assignments(self, goal_id: str) -> None:
         with SessionLocal() as session:
@@ -612,7 +793,7 @@ class GoalTaskManager:
                 assignment.phase = "queued"
                 assignment.finished_at = None
             goal = session.get(Goal, goal_id)
-            if goal:
+            if goal and goal.status == "active":
                 goal.run_state = "queued"
                 goal.current_step = assignments[0].current_step if assignments else ""
             session.commit()
@@ -620,6 +801,8 @@ class GoalTaskManager:
     def _fail_active_assignment(self, account_id: str, goal_id: str, message: str) -> None:
         with SessionLocal() as session:
             goal = require_goal(session, account_id, goal_id)
+            if goal.status == "completed":
+                return
             assignment = session.scalar(select(GoalAssignment).where(GoalAssignment.goal_id == goal.id, GoalAssignment.status.in_(("queued", "running"))).order_by(GoalAssignment.created_at))
             if assignment:
                 assignment.status = "failed"
@@ -639,6 +822,54 @@ class GoalTaskManager:
         if summary:
             event["summary"] = summary
         account_events.publish(account_id, event)
+
+    def _publish_task(self, account_id: str, assignment_id: str) -> None:
+        with SessionLocal() as session:
+            assignment = session.get(GoalAssignment, assignment_id)
+            if not assignment or not assignment.source_meeting_id:
+                return
+            event = {
+                "type": "meeting_task_changed",
+                "meeting_id": assignment.source_meeting_id,
+                "goal_id": assignment.goal_id,
+                "task_id": assignment.id,
+                "status": assignment.status,
+                "phase": assignment.phase,
+                "progress": assignment.progress,
+                "current_step": assignment.current_step,
+                "next_step": assignment.next_step,
+                "summary": assignment.report,
+                "evidence": json.loads(assignment.evidence),
+            }
+        account_events.publish(account_id, event)
+def _plugin_namespaces(plugin_id: str) -> tuple[str, ...]:
+    if plugin_id == "google-workspace":
+        return (
+            "workspace.gmail",
+            "workspace.drive",
+            "workspace.docs",
+            "workspace.calendar-meet",
+            "workspace.api",
+        )
+    return (plugin_id,)
+
+
+def _initial_tool_ids(skills: list[Skill], selected_plugin_ids: list[str]) -> list[str]:
+    workspace_skills = {
+        "calendar-meeting-prep": "workspace.calendar-meet",
+        "client-support-call": "workspace.calendar-meet",
+        "drive-file-workflows": "workspace.drive",
+        "google-docs-authoring": "workspace.docs",
+    }
+    namespaces: list[str] = []
+    for skill in skills:
+        required = [plugin_id for plugin_id in json.loads(skill.required_plugin_ids) if plugin_id in selected_plugin_ids]
+        namespace = workspace_skills.get(skill.slug)
+        if namespace:
+            namespaces.append(namespace)
+        elif len(required) == 1 and required[0] != "google-workspace":
+            namespaces.append(required[0])
+    return list(dict.fromkeys(namespaces))
 
 
 def _tool_failed(payload: dict[str, Any]) -> bool:

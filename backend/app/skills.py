@@ -38,10 +38,20 @@ Update the living client summary with confirmed facts, current problems, commitm
     BuiltinSkill("drive-file-workflows", "Drive File Workflows", "Find, organize, export, copy, and manage Drive files.", "Resolve the exact Drive file before acting. Preserve existing structure when editing and verify the target before sharing or removing content.", "Google Workspace", "google-workspace", ("google-workspace",)),
     BuiltinSkill("google-docs-authoring", "Google Docs Authoring", "Create and edit native Google documents.", "Use Docs tools for native document work. Preserve headings, lists, tables, links, and instructed wording unless the task explicitly changes them.", "Google Workspace", "google-workspace", ("google-workspace",)),
     BuiltinSkill("calendar-meeting-prep", "Calendar Meeting Prep", "Prepare and schedule client meetings from verified context.", "Resolve the exact event, attendees, timing, and linked materials. Create or update the invitation only with confirmed recipients and timing, and retain the Meet URL as evidence.", "Google Workspace", "google-workspace", ("google-workspace",)),
+    BuiltinSkill(
+        "client-support-call",
+        "Client Support Call",
+        "Create, invite, join, and conduct a live client support call.",
+        """Resolve the client only through the Front Desk client profile. For an immediate call, create a Meet space with create_instant_client_meeting; do not create a Calendar event and do not use browser controls to add attendees. Email the exact Meet link to the verified client with titan_email_client, then join that exact meeting with join_client_meeting. Immediately call wait_for_client_in_meeting and end the goal-worker run. The dedicated meeting worker alone owns the Meet tab, participant detection, and media bridge while it waits silently for the client to speak. Never use raw browser tools for Meet attendee management, Meet chat invitations, microphone selection, meeting joining, or participant monitoring. For a future call, ask the client for availability through their existing customer communication channel and resume the same goal when they reply.""",
+        "Google Workspace",
+        "google-workspace",
+        ("google-workspace", "browser-use"),
+    ),
     BuiltinSkill("jira-issue-workflow", "Jira Issue Workflow", "Investigate, create, and update customer-facing Jira work.", "Resolve the correct Jira project and issue before changing it. Preserve the complaint evidence, link related work, and update status only after the corresponding outcome is verified.", "Atlassian", "atlassian", ("atlassian",)),
     BuiltinSkill("vercel-incident", "Deployment Investigation", "Trace an application failure through Vercel deployments and logs.", "Inspect the affected deployment and its runtime or build logs before changing code. Identify the first relevant failure, apply the smallest authorized fix, and verify the live result.", "Vercel", "vercel", ("vercel",)),
     BuiltinSkill("slack-support-update", "Support Updates", "Notify the AquaLabs team about support progress and outcomes.", "Read the destination channel context before posting. Send concise evidence-backed updates for escalations, blockers, and confirmed resolutions. Never claim completion before verification.", "Slack", "slack", ("slack",)),
     BuiltinSkill("browser-web-workflows", "Web Workflows", "Complete multi-step work in a live browser.", "Inspect the current page, interact through stable accessible targets, and verify every consequential transition. Keep the tab identity bound to the assigned task.", "Browser Use", "browser-use", ("browser-use",)),
+    BuiltinSkill("aqualabs-order-operations", "AquaLabs Order Operations", "Inspect and safely update AquaLabs customer orders.", "Resolve the exact customer and enumerate current orders before mutation. Treat an amount as a filter, never an order identity: compare subtotal and total, exclude cancelled, delivered, and refunded orders from cancellation candidates, and mutate only when exactly one actionable order matches every customer-provided detail. If no actionable order or more than one candidate matches, ask the customer for the order number or another distinguishing detail and do not mutate anything. Preserve the operation identity so retries are idempotent, then verify the persisted order state before reporting completion.", "AquaLabs", "aqualabs-store", ("aqualabs-store",)),
     BuiltinSkill(
         "aqualabs-customer-resolution",
         "AquaLabs Customer Resolution",
@@ -54,15 +64,26 @@ When the matching reply arrives, resume the same case. Schedule a Google Meet fo
 
 Apply only authorized changes, verify the result, and obtain the customer's explicit confirmation. Then update Jira and the Front Desk goal, send a concise resolution email, notify the AquaLabs support channel in Slack, end the meeting, and verify that the meeting tab and agent session are closed. Every external action needs observed evidence and an idempotency identity so resumed work cannot duplicate messages, tickets, meetings, or repairs.""",
         "AquaLabs",
-        required_plugin_ids=("google-workspace", "atlassian", "slack", "browser-use"),
+        required_plugin_ids=("aqualabs-store", "google-workspace", "atlassian", "slack", "browser-use"),
     ),
 )
 
 
 def seed_skills(session: Session, account_id: str) -> None:
-    existing = set(session.scalars(select(Skill.slug).where(Skill.account_id == account_id)))
+    existing = {
+        skill.slug: skill
+        for skill in session.scalars(select(Skill).where(Skill.account_id == account_id, Skill.source == "builtin"))
+    }
     for definition in BUILTIN_SKILLS:
-        if definition.slug in existing:
+        skill = existing.get(definition.slug)
+        if skill:
+            skill.name = definition.name
+            skill.description = definition.description
+            skill.instructions = definition.instructions
+            skill.batch_name = definition.batch_name
+            skill.plugin_id = definition.plugin_id
+            skill.required_plugin_ids = json.dumps(definition.required_plugin_ids)
+            skill.deletable = False
             continue
         session.add(Skill(
             account_id=account_id,

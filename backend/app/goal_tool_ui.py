@@ -8,6 +8,14 @@ from tools.browser_use.intent import describe_browser_action
 def describe_goal_tool(name: str, args: dict[str, Any]) -> tuple[str, str]:
     if name == "create_client_meeting":
         return "Creating the client meeting", "meet"
+    if name == "create_instant_client_meeting":
+        return "Creating the support call link", "meet"
+    if name == "join_client_meeting":
+        return "Starting the dedicated meeting worker", "meet"
+    if name == "wait_for_client_in_meeting":
+        return "Waiting for the client to join", "meet"
+    if name == "titan_email_client":
+        return "Emailing the meeting link to the client", "mail"
     if name.startswith("workspace_gmail_"):
         action = name.removeprefix("workspace_gmail_").replace("_", " ")
         return f"{action.capitalize()} in Gmail", "gmail"

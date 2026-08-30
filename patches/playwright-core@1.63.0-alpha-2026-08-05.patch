@@ -1,17 +1,7 @@
 diff --git a/lib/coreBundle.js b/lib/coreBundle.js
-index d53d1ca2b562e59e251470853830158cbe5c5ccc..788d1309c79363fde3eb08762367a2a81e798016 100644
+index d53d1ca..073fea0 100644
 --- a/lib/coreBundle.js
 +++ b/lib/coreBundle.js
-@@ -72743,10 +72743,11 @@ var init_cdpRelay = __esm({
--      _onClose(event) {
--        debugLogger2(`<ws closed> code=${event.code} reason=${event.reason}`);
-+      _onClose(code, reason) {
-+        const message = reason?.toString() || "";
-+        debugLogger2(`<ws closed> code=${code} reason=${message}`);
-         this._dispose();
--        this.onclose?.(event.reason);
-+        this.onclose?.(message);
-       }
 @@ -63764,29 +63764,9 @@ async function waitForCompletion(tab2, callback) {
    let result2;
    try {
@@ -81,7 +71,32 @@ index d53d1ca2b562e59e251470853830158cbe5c5ccc..788d1309c79363fde3eb08762367a2a8
          response2.addAction({ name: "navigate", url: url3 });
        }
      });
-@@ -74487,7 +74466,7 @@ var init_dashboardController = __esm({
+@@ -72623,7 +72602,8 @@ var init_cdpRelay = __esm({
+         if (testUserDataDir)
+           args.push(`--user-data-dir=${testUserDataDir}`);
+         const userDataDir = testUserDataDir ?? this._userDataDir;
+-        const profileDirectory = userDataDir ? await findPlaywrightExtensionProfile(userDataDir) : void 0;
++        const configuredProfileDirectory = process.env.PLAYWRIGHT_MCP_PROFILE_DIRECTORY;
++        const profileDirectory = configuredProfileDirectory || (userDataDir ? await findPlaywrightExtensionProfile(userDataDir) : void 0);
+         if (profileDirectory)
+           args.push(`--profile-directory=${profileDirectory}`);
+         if (import_os27.default.platform() === "linux" && channel === "chromium")
+@@ -72794,10 +72774,11 @@ ${data.toString()}
+           this.onmessage?.(object.method, object.params);
+         }
+       }
+-      _onClose(event) {
+-        debugLogger2(`<ws closed> code=${event.code} reason=${event.reason}`);
++      _onClose(code, reason) {
++        const message = reason?.toString() || "";
++        debugLogger2(`<ws closed> code=${code} reason=${message}`);
+         this._dispose();
+-        this.onclose?.(event.reason);
++        this.onclose?.(message);
+       }
+       _onError(event) {
+         debugLogger2(`<ws error> message=${event.message} type=${event.type} target=${event.target}`);
+@@ -74487,7 +74468,7 @@ var init_dashboardController = __esm({
        async navigate(params2) {
          if (!params2.url)
            return;

@@ -18,8 +18,26 @@ class AccountEventBroker:
         self._subscribers: dict[str, set[tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, object]]]]] = {}
 
     async def subscribe(self, account_id: str) -> AsyncIterator[str]:
+        events = self.events(account_id).__aiter__()
+        pending = asyncio.create_task(anext(events))
+        try:
+            yield frame({"type": "ready"})
+            while True:
+                done, _ = await asyncio.wait({pending}, timeout=KEEPALIVE_SECONDS)
+                if not done:
+                    yield keepalive()
+                    continue
+                yield frame(pending.result())
+                pending = asyncio.create_task(anext(events))
+        finally:
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+            await events.aclose()
+
+    async def events(self, account_id: str) -> AsyncIterator[dict[str, object]]:
+        """Yield account events directly for internal event-driven consumers."""
         if _postgres_url():
-            async for event in self._subscribe_postgres(account_id):
+            async for event in self._events_postgres(account_id):
                 yield event
             return
         loop = asyncio.get_running_loop()
@@ -28,14 +46,8 @@ class AccountEventBroker:
         with self._lock:
             self._subscribers.setdefault(account_id, set()).add(subscriber)
         try:
-            yield frame({"type": "ready"})
             while True:
-                try:
-                    event = await asyncio.wait_for(queue.get(), timeout=KEEPALIVE_SECONDS)
-                except TimeoutError:
-                    yield keepalive()
-                    continue
-                yield frame(event)
+                yield await queue.get()
         finally:
             with self._lock:
                 subscribers = self._subscribers.get(account_id)
@@ -56,30 +68,18 @@ class AccountEventBroker:
         for loop, queue in subscribers:
             loop.call_soon_threadsafe(queue.put_nowait, event)
 
-    async def _subscribe_postgres(self, account_id: str) -> AsyncIterator[str]:
+    async def _events_postgres(self, account_id: str) -> AsyncIterator[dict[str, object]]:
         postgres_url = _postgres_url()
         if not postgres_url:
             return
         connection = await psycopg.AsyncConnection.connect(postgres_url, autocommit=True)
         try:
             await connection.execute(f"LISTEN {EVENT_CHANNEL}")
-            yield frame({"type": "ready"})
-            notifications = connection.notifies().__aiter__()
-            next_notification = asyncio.create_task(anext(notifications))
-            while True:
-                done, _ = await asyncio.wait({next_notification}, timeout=KEEPALIVE_SECONDS)
-                if not done:
-                    yield keepalive()
-                    continue
-                notification = next_notification.result()
-                next_notification = asyncio.create_task(anext(notifications))
+            async for notification in connection.notifies():
                 payload = json.loads(notification.payload)
                 if payload.get("account_id") == account_id and isinstance(payload.get("event"), dict):
-                    yield frame(payload["event"])
+                    yield payload["event"]
         finally:
-            if "next_notification" in locals():
-                next_notification.cancel()
-                await asyncio.gather(next_notification, return_exceptions=True)
             await connection.close()
 
 

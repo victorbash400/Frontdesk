@@ -146,17 +146,43 @@ def claim_due_automations(session: Session, now: datetime | None = None) -> list
     return results
 
 
-def list_notifications(session: Session, account_id: str, client_id: str | None = None) -> list[dict[str, object]]:
+def list_notifications(session: Session, account_id: str, client_id: str | None = None, *, open_questions: bool = False) -> list[dict[str, object]]:
     query = select(GoalNotification).join(Goal).where(Goal.account_id == account_id)
     if client_id:
         query = query.where(GoalNotification.client_id == client_id)
+    if open_questions:
+        query = query.join(GoalAssignment, GoalAssignment.id == GoalNotification.assignment_id).where(
+            GoalNotification.kind == "clarification",
+            GoalNotification.status == "open",
+            Goal.status == "active",
+            Goal.run_state == "blocked",
+            GoalAssignment.status == "blocked",
+            GoalAssignment.phase == "blocked",
+            GoalAssignment.current_step == GoalNotification.message,
+        )
     rows = list(session.scalars(query.order_by(GoalNotification.created_at.desc())))
+    if open_questions:
+        active_assignment_ids: set[str] = set()
+        active_rows: list[GoalNotification] = []
+        for row in rows:
+            if not row.assignment_id or row.assignment_id in active_assignment_ids:
+                continue
+            active_assignment_ids.add(row.assignment_id)
+            active_rows.append(row)
+        rows = active_rows
     return [notification_snapshot(item) for item in rows]
 
 
-def create_notification(session: Session, account_id: str, goal_id: str, kind: str, message: str) -> dict[str, object]:
+def create_notification(
+    session: Session,
+    account_id: str,
+    goal_id: str,
+    kind: str,
+    message: str,
+    assignment_id: str | None = None,
+) -> dict[str, object]:
     goal = require_goal(session, account_id, goal_id)
-    notification = GoalNotification(goal_id=goal.id, client_id=goal.client_id, kind=kind, message=message.strip())
+    notification = GoalNotification(goal_id=goal.id, assignment_id=assignment_id, client_id=goal.client_id, kind=kind, message=message.strip())
     session.add(notification)
     session.add(GoalActivity(goal_id=goal.id, kind=f"{kind}_created", summary=message.strip()))
     session.commit()
@@ -265,6 +291,8 @@ def assignment_snapshot(session: Session, assignment: GoalAssignment) -> dict[st
     updates = list(session.scalars(select(GoalTaskUpdate).where(GoalTaskUpdate.assignment_id == assignment.id).order_by(GoalTaskUpdate.created_at.desc()).limit(30)))
     return {
         "id": assignment.id,
+        "sourceMeetingId": assignment.source_meeting_id,
+        "auxiliary": assignment.auxiliary,
         "title": assignment.title,
         "instruction": assignment.instruction,
         "status": assignment.status,
@@ -291,4 +319,4 @@ def automation_snapshot(automation: GoalAutomation) -> dict[str, object]:
 
 
 def notification_snapshot(notification: GoalNotification) -> dict[str, object]:
-    return {"id": notification.id, "goalId": notification.goal_id, "clientId": notification.client_id, "kind": notification.kind, "message": notification.message, "status": notification.status, "answer": notification.answer, "createdAt": notification.created_at.isoformat(), "answeredAt": notification.answered_at.isoformat() if notification.answered_at else None}
+    return {"id": notification.id, "goalId": notification.goal_id, "assignmentId": notification.assignment_id, "clientId": notification.client_id, "kind": notification.kind, "message": notification.message, "status": notification.status, "answer": notification.answer, "createdAt": notification.created_at.isoformat(), "answeredAt": notification.answered_at.isoformat() if notification.answered_at else None}

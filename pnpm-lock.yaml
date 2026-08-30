@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   playwright-core@1.63.0-alpha-2026-08-05:
-    hash: 61a3c3bd1b4e6539c10cd74d64843c0b0845fcf469ae9230dbbad6e63d8c9efe
+    hash: 7ea3dd833f36a9ea5900eae61fdfa300859005ee42b97dfbca658d7d4ae1c1ae
     path: patches/playwright-core@1.63.0-alpha-2026-08-05.patch
 
 importers:
@@ -3096,7 +3096,7 @@ snapshots:
   '@playwright/mcp@0.0.79':
     dependencies:
       playwright: 1.63.0-alpha-2026-08-05
-      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=61a3c3bd1b4e6539c10cd74d64843c0b0845fcf469ae9230dbbad6e63d8c9efe)
+      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=7ea3dd833f36a9ea5900eae61fdfa300859005ee42b97dfbca658d7d4ae1c1ae)
 
   '@rolldown/binding-android-arm-eabi@1.2.5':
     optional: true
@@ -5042,11 +5042,11 @@ snapshots:
 
   picomatch@4.0.5: {}
 
-  playwright-core@1.63.0-alpha-2026-08-05(patch_hash=61a3c3bd1b4e6539c10cd74d64843c0b0845fcf469ae9230dbbad6e63d8c9efe): {}
+  playwright-core@1.63.0-alpha-2026-08-05(patch_hash=7ea3dd833f36a9ea5900eae61fdfa300859005ee42b97dfbca658d7d4ae1c1ae): {}
 
   playwright@1.63.0-alpha-2026-08-05:
     dependencies:
-      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=61a3c3bd1b4e6539c10cd74d64843c0b0845fcf469ae9230dbbad6e63d8c9efe)
+      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=7ea3dd833f36a9ea5900eae61fdfa300859005ee42b97dfbca658d7d4ae1c1ae)
     optionalDependencies:
       fsevents: 2.3.2
 

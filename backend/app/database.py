@@ -58,6 +58,8 @@ def initialize_database() -> None:
     if "goal_assignments" in inspector.get_table_names():
         assignment_columns = {column["name"] for column in inspector.get_columns("goal_assignments")}
         additions = {
+            "source_meeting_id": "VARCHAR(36)",
+            "auxiliary": "BOOLEAN NOT NULL DEFAULT FALSE",
             "title": "VARCHAR(255) NOT NULL DEFAULT ''",
             "phase": "VARCHAR(24) NOT NULL DEFAULT 'queued'",
             "progress": "INTEGER NOT NULL DEFAULT 0",
@@ -73,6 +75,7 @@ def initialize_database() -> None:
             for column, definition in additions.items():
                 if column not in assignment_columns:
                     connection.execute(text(f"ALTER TABLE goal_assignments ADD COLUMN {column} {definition}"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_goal_assignments_source_meeting_id ON goal_assignments (source_meeting_id)"))
     if "mail_messages" in inspector.get_table_names():
         message_columns = {column["name"] for column in inspector.get_columns("mail_messages")}
         additions = {
@@ -89,6 +92,12 @@ def initialize_database() -> None:
             for column, definition in additions.items():
                 if column not in message_columns:
                     connection.execute(text(f"ALTER TABLE mail_messages ADD COLUMN {column} {definition}"))
+    if "goal_notifications" in inspector.get_table_names():
+        notification_columns = {column["name"] for column in inspector.get_columns("goal_notifications")}
+        if "assignment_id" not in notification_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE goal_notifications ADD COLUMN assignment_id VARCHAR(36)"))
+                connection.execute(text("CREATE INDEX IF NOT EXISTS ix_goal_notifications_assignment_id ON goal_notifications (assignment_id)"))
     Base.metadata.create_all(bind=engine)
     if engine.dialect.name == "sqlite":
         with engine.begin() as connection:

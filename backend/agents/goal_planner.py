@@ -13,11 +13,11 @@ from app.config import get_settings
 
 
 class GoalTaskOperation(BaseModel):
-    action: Literal["create", "reuse", "update", "steer", "cancel"]
+    action: Literal["create", "reuse", "update", "steer", "retry", "cancel"]
     task_id: str = Field(default="", description="Existing task ID for every action except create.")
     key: str = Field(default="", description="Short unique key used by later task dependencies for create operations.")
     title: str = Field(default="", description="Concise task-board title for create or update.")
-    instruction: str = Field(default="", description="Complete operational instruction for create, update, or steer.")
+    instruction: str = Field(default="", description="Complete operational instruction for create, update, steer, or retry.")
     depends_on: list[str] = Field(default_factory=list)
     required_inputs: list[str] = Field(default_factory=list)
     expected_outputs: list[str] = Field(default_factory=list)
@@ -28,13 +28,15 @@ class GoalPlan(BaseModel):
     operations: list[GoalTaskOperation] = Field(min_length=1)
 
 
-PLANNER_INSTRUCTION = """You maintain Front Desk's ordered, strictly sequential goal task board. You plan work but never execute it. You receive a compact organization skill index containing IDs, names, descriptions, required plugins, and availability. Select only available skills necessary for each task. You do not receive or reproduce their full instructions; workers resolve those after the plan is persisted.
+PLANNER_INSTRUCTION = """You maintain Front Desk's ordered, strictly sequential goal task board. You plan work but never execute it. You receive a compact organization skill index containing IDs, names, descriptions, required plugins, and availability. Select only available skills necessary for each task. Preferred skill IDs are suggestions, never requirements: ignore any preferred skill that would broaden or replace the requested outcome. You do not receive or reproduce full skill instructions; workers resolve those after the plan is persisted.
 
-Plan the requested outcome, not a list of tools or applications. Create one task for one cohesive outcome. Split only when a later task consumes a clearly named, independently verifiable output from an earlier task, or when long-running work has a real external wait boundary such as a scheduled client meeting. Never split research from the action that directly consumes it.
+Plan the requested outcome, not a list of tools or applications. Create one task for one cohesive outcome. Do not add research briefs, tickets, account notes, calendar scheduling, email, Slack notifications, or follow-up work unless the request requires them. A direct request to call or speak with a client is one live-call task: resolve the client's contact details, create and join the Google Meet, speak with the client, and record the actual outcome. A support case, internal notification, proposed time, or calendar artifact is not evidence that the client was contacted. Split only when a later task consumes a clearly named, independently verifiable output from an earlier task, or when the user explicitly requests a future meeting whose scheduled time creates a real external wait boundary. Never split research from the action that directly consumes it.
 
-Return operations that create, reuse, update, steer, or cancel tasks. Read the existing task ledger first. Reuse a task that already covers the requested outcome. Update queued work, steer running or blocked work, and cancel only when the user clearly stops or replaces it. Never duplicate an existing outcome. Create operations need a short unique key, concise task-board title, detailed operational instruction, dependencies on earlier create keys, exact required inputs, and exact expected outputs. Instructions must name the target, actions, constraints, and completion evidence. For meetings, preparation/scheduling, the live client conversation, and post-meeting follow-up are separate tasks because the live conversation has an external wait boundary. The conversation task must require evidence that the client joined, the agent participated, the requested confirmation was recorded, and the meeting ended. The follow-up task must depend on that confirmed conversation output.
+Return operations that create, reuse, update, steer, retry, or cancel tasks. Read the existing task ledger first. Reuse a task that already covers the requested outcome. Update queued work, steer running or blocked work, retry failed work, and cancel only when the user clearly stops or replaces it. A retry must target the same failed task identity and provide a complete corrected instruction informed by the failure in its ledger; never create a replacement task for the same outcome. Never duplicate an existing outcome. Create operations need a short unique key, concise task-board title, detailed operational instruction, dependencies on earlier create keys, exact required inputs, and exact expected outputs. Instructions must name the target, actions, constraints, and completion evidence. Only an explicitly future or scheduled meeting creates an external wait boundary: in that case scheduling, the later live conversation, and requested post-meeting follow-up may be separate tasks. A live conversation task must require evidence that the client joined, the agent participated, the requested confirmation was recorded, and the meeting ended. Add follow-up work only when the request asks for it.
 
-Never invent facts, identifiers, links, dates, recipients, or tool results. Preserve the user's wording and constraints. Do not add placeholder work. Return only the structured plan."""
+Client identity comes only from Front Desk's client directory and profiles. Never instruct a worker to search Gmail, Slack, Drive, Jira, the browser, or another plugin to discover who a named client is. When the named client cannot be matched unambiguously in Front Desk, instruct the worker to ask the user which client they mean.
+
+Never invent facts, identifiers, links, dates, recipients, proposed meeting times, or tool results. A request to call a client without a future time is an immediate call now, not a missing scheduling choice. If a future meeting lacks client availability, instruct the worker to ask the client through the client's communication channel and wait for the reply. Use the owner question tool only for a choice or ambiguity the Front Desk owner must resolve. Preserve the user's wording and constraints. Do not reinterpret "call" as "open a support case," "post to Slack," or "schedule a future call." Do not add placeholder work. Return only the structured plan."""
 
 
 def create_goal_planner_runner(session_service: BaseSessionService) -> Runner:
@@ -49,7 +51,7 @@ def create_goal_planner_runner(session_service: BaseSessionService) -> Runner:
         ),
         mode="chat",
         output_schema=GoalPlan,
-        instruction=PLANNER_INSTRUCTION,
+        instruction=PLANNER_INSTRUCTION + "\n\nFor a direct client call, select the Client Support Call skill when it is available; do not substitute the generic Web Workflows skill. The call worker creates an immediate Meet space, emails its link to the client, and joins it through the dedicated meeting worker.",
         generate_content_config=types.GenerateContentConfig(
             thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
         ),

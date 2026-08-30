@@ -31,7 +31,6 @@ PLAYWRIGHT_ALLOWED_TOOLS = [
     "browser_select_option",
     "browser_snapshot",
     "browser_tabs",
-    "browser_take_screenshot",
     "browser_type",
     "browser_wait_for",
 ]
@@ -57,6 +56,7 @@ async def connected_playwright_toolset() -> McpToolset:
     if not tools:
         await toolset.close()
         raise RuntimeError("Browser Use connected without exposing browser tools.")
+    toolset.front_desk_tool_names = tuple(tool.name for tool in tools)
     return toolset
 
 
@@ -86,6 +86,10 @@ def create_playwright_toolset() -> McpToolset:
     PLAYWRIGHT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
     environment["PLAYWRIGHT_MCP_EXTENSION_TOKEN"] = token
+    profile_directory = get_settings().playwright_profile_directory.strip()
+    if not profile_directory:
+        raise RuntimeError("Browser Use is missing its Chrome profile directory.")
+    environment["PLAYWRIGHT_MCP_PROFILE_DIRECTORY"] = profile_directory
     return McpToolset(
         connection_params=StdioConnectionParams(
             server_params=StdioServerParameters(
