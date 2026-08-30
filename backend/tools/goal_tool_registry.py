@@ -138,7 +138,7 @@ class GoalToolRegistry(BaseToolset):
             if tool_id == "workspace.api":
                 return [tool for tool in workspace if tool.name == "workspace_google_api_request"]
         if tool_id == "browser-use":
-            toolset = await connected_playwright_toolset()
+            toolset = await connected_playwright_toolset(self._account_id)
         elif tool_id == "aqualabs-store":
             toolset = await configured_aqualabs_store_toolset()
         else:

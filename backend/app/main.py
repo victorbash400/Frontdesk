@@ -33,6 +33,7 @@ from .schemas import AccountCreate, AccountCredentials, AccountRead, AutomationC
 from .skills import create_skill, delete_skill, list_skills, update_skill
 from .voice import create_voice_ticket, run_voice_session
 from meetings.routes import router as meetings_router
+from tools.browser_use.cloud_relay import router as browser_relay_router
 
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Front Desk API", version="0.1.0", lifespan=lifespan)
 app.include_router(meetings_router)
+app.include_router(browser_relay_router)
 settings = get_settings()
 app.add_middleware(
     CORSMiddleware,

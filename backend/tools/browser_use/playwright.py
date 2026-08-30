@@ -36,9 +36,9 @@ PLAYWRIGHT_ALLOWED_TOOLS = [
 ]
 
 
-async def connected_playwright_toolset() -> McpToolset:
+async def connected_playwright_toolset(account_id: str | None = None) -> McpToolset:
     """Prove Chrome can answer a command before a model invocation starts."""
-    toolset = create_playwright_toolset()
+    toolset = create_playwright_toolset(account_id)
     try:
         tools = await toolset.get_tools()
         tabs_tool = next((tool for tool in tools if tool.name == "browser_tabs"), None)
@@ -78,18 +78,28 @@ async def capture_browser_preview(toolset: McpToolset, assignment_id: str) -> by
     return preview_path.read_bytes()
 
 
-def create_playwright_toolset() -> McpToolset:
+def create_playwright_toolset(account_id: str | None = None) -> McpToolset:
     binary = _playwright_binary()
-    token = get_settings().playwright_extension_token
-    if not token:
-        raise RuntimeError("Browser Use is missing its extension connection token.")
+    settings = get_settings()
     PLAYWRIGHT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
-    environment["PLAYWRIGHT_MCP_EXTENSION_TOKEN"] = token
-    profile_directory = get_settings().playwright_profile_directory.strip()
-    if not profile_directory:
-        raise RuntimeError("Browser Use is missing its Chrome profile directory.")
-    environment["PLAYWRIGHT_MCP_PROFILE_DIRECTORY"] = profile_directory
+    if settings.browser_cloud_relay:
+        if not account_id:
+            raise RuntimeError("Cloud Browser Use requires an account identity.")
+        environment.pop("PLAYWRIGHT_MCP_EXTENSION_TOKEN", None)
+        environment.pop("PLAYWRIGHT_MCP_PROFILE_DIRECTORY", None)
+        environment["FRONT_DESK_BROWSER_CONNECT_URL"] = f"http://127.0.0.1:{os.environ.get('PORT', '8000')}/internal/browser/connections"
+        environment["FRONT_DESK_BROWSER_ACCOUNT_ID"] = account_id
+        environment["FRONT_DESK_INTERNAL_SECRET"] = settings.internal_secret
+    else:
+        token = settings.playwright_extension_token
+        if not token:
+            raise RuntimeError("Browser Use is missing its extension connection token.")
+        environment["PLAYWRIGHT_MCP_EXTENSION_TOKEN"] = token
+        profile_directory = settings.playwright_profile_directory.strip()
+        if not profile_directory:
+            raise RuntimeError("Browser Use is missing its Chrome profile directory.")
+        environment["PLAYWRIGHT_MCP_PROFILE_DIRECTORY"] = profile_directory
     return McpToolset(
         connection_params=StdioConnectionParams(
             server_params=StdioServerParameters(

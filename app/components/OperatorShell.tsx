@@ -4,6 +4,7 @@ import { useDeferredValue, useMemo, useState, type KeyboardEvent, type MouseEven
 
 import { useFileSystem } from "../hooks/useFileSystem";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
+import { useCloudBrowserBridge } from "../hooks/useCloudBrowserBridge";
 import { breadcrumbsForDestination, folderPath, isContainer, nodesForDestination, sortNodes } from "../lib/fileSystemSelectors";
 import { tagColors, type FileSystemNode, type SortMode, type ViewMode } from "../types/filesystem";
 import type { OperatorAccount } from "../types/account";
@@ -26,6 +27,7 @@ import styles from "./OperatorShell.module.css";
 type DialogState = { mode: "create-client" | "create-folder" | "rename"; node?: FileSystemNode };
 
 export function OperatorShell({ account }: { account: OperatorAccount }) {
+  useCloudBrowserBridge();
   const fileSystem = useFileSystem(account.id);
   const navigation = useNavigationHistory();
   const [chatOpen, setChatOpen] = useState(false);

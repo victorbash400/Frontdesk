@@ -34,7 +34,7 @@ async def join_meeting(meeting: Meeting, *, voice: str = "Kore", language: str =
         "meeting=%s runtime=%s bridge=%s worker=launch meet=%s",
         meeting.id, runtime_id, bridge_id, meeting.meet_uri,
     )
-    toolset = await connected_playwright_toolset()
+    toolset = await connected_playwright_toolset(meeting.account_id)
     logger.info("meeting=%s runtime=%s worker=browser_preflight_passed", meeting.id, runtime_id)
     browser_opened = False
     try:

@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Button } from './tabItem';
 import { AuthTokenSection, getOrCreateAuthToken } from './authToken';
+import { isCloudRelay } from '../cloudConfig';
 
 type Status =
   | { type: 'connecting'; message: string }
@@ -55,7 +56,7 @@ const ConnectApp: React.FC = () => {
 
       try {
         const host = new URL(relayUrl).hostname;
-        if (host !== '127.0.0.1' && host !== '[::1]') {
+        if (host !== '127.0.0.1' && host !== '[::1]' && !isCloudRelay(relayUrl)) {
           setError(`Front Desk local mode only allows loopback connections (127.0.0.1 or [::1]). Received host: ${host}`);
           return;
         }

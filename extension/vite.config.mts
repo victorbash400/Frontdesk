@@ -5,7 +5,8 @@ import react from '@vitejs/plugin-react';
 const extensionRoot = import.meta.dirname;
 
 export default defineConfig(({ mode }) => {
-  const backendEnvironment = loadEnv(mode, resolve(extensionRoot, '../backend'), 'FRONT_DESK_');
+  const cloudOrigin = process.env.VITE_FRONT_DESK_API_ORIGIN || '';
+  const backendEnvironment = cloudOrigin ? {} : loadEnv(mode, resolve(extensionRoot, '../backend'), 'FRONT_DESK_');
   return {
     root: resolve(extensionRoot, 'src/ui'),
     publicDir: false,

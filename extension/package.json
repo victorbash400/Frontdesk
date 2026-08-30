@@ -13,7 +13,7 @@
   },
   "license": "Apache-2.0",
   "scripts": {
-    "build": "vite build && vite build --config vite.background.config.mts && node scripts/copy-static.mjs",
+    "build": "vite build && node scripts/build-background.mjs && node scripts/copy-static.mjs",
     "test": "vitest run --config vite.background.config.mts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.ui.json"
   },

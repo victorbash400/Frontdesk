@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   playwright-core@1.63.0-alpha-2026-08-05:
-    hash: 7ea3dd833f36a9ea5900eae61fdfa300859005ee42b97dfbca658d7d4ae1c1ae
+    hash: f20e5a8f36a275b51fd880dc2b006a7a80edef87afaf227e7823bb6dcd9a7905
     path: patches/playwright-core@1.63.0-alpha-2026-08-05.patch
 
 importers:
@@ -64,7 +64,7 @@ importers:
     dependencies:
       '@vitejs/plugin-react':
         specifier: latest
-        version: 6.1.0(vite@8.2.2(@types/node@26.4.0))
+        version: 6.1.1(vite@8.2.2(@types/node@26.4.0))
       react:
         specifier: latest
         version: 19.2.8
@@ -956,8 +956,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@vitejs/plugin-react@6.1.0':
-    resolution: {integrity: sha512-qd2BzUBehkov86WFhg0JkEFEYyCLG9uPCe6qWTY/kRlss9OvJrOF2UbIWT7p+8IzZHkEu0DNGHc4HSv+JdDLsw==}
+  '@vitejs/plugin-react@6.1.1':
+    resolution: {integrity: sha512-yxLaQV9gkhS8ezJqCM6+ndU7mDY6gqAg75NQ+0IjwEI8IYOmQCgkRwHKVSfWXW076DsqMo0Dk+0FK1U+M5RgFw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
       '@rolldown/plugin-babel': ^0.1.7 || ^0.2.0
@@ -3096,7 +3096,7 @@ snapshots:
   '@playwright/mcp@0.0.79':
     dependencies:
       playwright: 1.63.0-alpha-2026-08-05
-      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=7ea3dd833f36a9ea5900eae61fdfa300859005ee42b97dfbca658d7d4ae1c1ae)
+      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=f20e5a8f36a275b51fd880dc2b006a7a80edef87afaf227e7823bb6dcd9a7905)
 
   '@rolldown/binding-android-arm-eabi@1.2.5':
     optional: true
@@ -3441,7 +3441,7 @@ snapshots:
   '@unrs/resolver-binding-win32-x64-msvc@1.12.2':
     optional: true
 
-  '@vitejs/plugin-react@6.1.0(vite@8.2.2(@types/node@26.4.0))':
+  '@vitejs/plugin-react@6.1.1(vite@8.2.2(@types/node@26.4.0))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.2.2(@types/node@26.4.0)
@@ -5042,11 +5042,11 @@ snapshots:
 
   picomatch@4.0.5: {}
 
-  playwright-core@1.63.0-alpha-2026-08-05(patch_hash=7ea3dd833f36a9ea5900eae61fdfa300859005ee42b97dfbca658d7d4ae1c1ae): {}
+  playwright-core@1.63.0-alpha-2026-08-05(patch_hash=f20e5a8f36a275b51fd880dc2b006a7a80edef87afaf227e7823bb6dcd9a7905): {}
 
   playwright@1.63.0-alpha-2026-08-05:
     dependencies:
-      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=7ea3dd833f36a9ea5900eae61fdfa300859005ee42b97dfbca658d7d4ae1c1ae)
+      playwright-core: 1.63.0-alpha-2026-08-05(patch_hash=f20e5a8f36a275b51fd880dc2b006a7a80edef87afaf227e7823bb6dcd9a7905)
     optionalDependencies:
       fsevents: 2.3.2
 

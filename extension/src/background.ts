@@ -16,10 +16,14 @@
 
 import { debugLog, RelayConnection } from './relayConnection';
 import { PendingConnections } from './pendingConnection';
+import { cloudAppOrigin, isCloudRelay } from './cloudConfig';
 import { ConnectedBrowser, isNonDebuggableUrl } from './connectedTabGroup';
 import { relayDecision, validRelayIdentity, type MeetRelayIdentity } from './meetIdentity';
 
 type PageMessage = {
+  type: 'openCloudConnection';
+  relayUrl: string;
+} | {
   type: 'connectionRequested';
   mcpRelayUrl: string;
 } | {
@@ -59,6 +63,19 @@ class PlaywrightExtension {
   // Promise-based message handling is not supported in Chrome: https://issues.chromium.org/issues/40753031
   private _onMessage(message: PageMessage, sender: chrome.runtime.MessageSender, sendResponse: (response: any) => void) {
     switch (message.type) {
+      case 'openCloudConnection': {
+        if (!sender.tab?.url || new URL(sender.tab.url).origin !== cloudAppOrigin || !isCloudRelay(message.relayUrl)) {
+          sendResponse({ success: false, error: 'Untrusted cloud browser connection.' });
+          return false;
+        }
+        const url = new URL(chrome.runtime.getURL('connect.html'));
+        url.searchParams.set('mcpRelayUrl', message.relayUrl);
+        url.searchParams.set('client', JSON.stringify({ name: 'Front Desk Cloud' }));
+        url.searchParams.set('protocolVersion', '2');
+        chrome.tabs.create({ url: url.toString(), openerTabId: sender.tab.id, windowId: sender.tab.windowId })
+          .then(() => sendResponse({ success: true }), error => sendResponse({ success: false, error: String(error) }));
+        return true;
+      }
       case 'connectionRequested': {
         const selectorTabId = sender.tab!.id!;
         this._releaseConnectPage(selectorTabId).then(() => {

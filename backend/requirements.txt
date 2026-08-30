@@ -8,6 +8,7 @@ google-adk[mcp]
 google-cloud-aiplatform[agent_engines,adk]
 google-genai
 google-auth
+requests
 mcp
 PyJWT[crypto]
 pydantic
@@ -15,3 +16,4 @@ starlette
 cryptography
 aiosqlite
 greenlet
+websockets

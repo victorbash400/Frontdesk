@@ -6,6 +6,14 @@ type BrowserAction = {
   x?: number;
   y?: number;
 };
+import { cloudAppOrigin, isCloudRelay } from './cloudConfig';
+
+window.addEventListener('message', (event) => {
+  if (window.location.origin !== cloudAppOrigin || event.source !== window || event.origin !== cloudAppOrigin)
+    return;
+  if (event.data?.type === 'frontDeskCloudConnect' && typeof event.data.relayUrl === 'string' && isCloudRelay(event.data.relayUrl))
+    void chrome.runtime.sendMessage({ type: 'openCloudConnection', relayUrl: event.data.relayUrl });
+});
 
 type BrowserOverlayMessage = BrowserAction | { type: 'frontDeskBrowserOverlayHide' };
 

@@ -1,0 +1,5 @@
+packages:
+  - .
+
+patchedDependencies:
+  playwright-core@1.63.0-alpha-2026-08-05: ../../patches/playwright-core@1.63.0-alpha-2026-08-05.patch

@@ -49,7 +49,9 @@ async function openRelayConnection(mcpRelayUrl: string): Promise<RelayConnection
     await new Promise<void>((resolve, reject) => {
       socket.onopen = () => resolve();
       socket.onerror = () => reject(new Error('WebSocket error'));
-      setTimeout(() => reject(new Error('Connection timeout')), 1000);
+      const timeout = setTimeout(() => reject(new Error('Connection timeout')), 10000);
+      socket.addEventListener('open', () => clearTimeout(timeout), { once: true });
+      socket.addEventListener('error', () => clearTimeout(timeout), { once: true });
     });
     return new RelayConnection(socket);
   } catch (error: any) {

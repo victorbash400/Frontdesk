@@ -537,7 +537,7 @@ def test_recommended_browser_namespace_stays_disconnected_until_explicit_load() 
         result = asyncio.run(registry.load_goal_tools(["browser-use"], context))
     assert result == {"status": "failed", "error": "Browser disconnected."}
     assert context.state == {}
-    connect.assert_awaited_once_with()
+    connect.assert_awaited_once_with("account")
 
 
 def test_loaded_goal_tools_refresh_during_the_same_adk_invocation() -> None:
@@ -1061,6 +1061,7 @@ def test_browser_toolset_binds_the_configured_chrome_profile() -> None:
     settings = SimpleNamespace(
         playwright_extension_token="extension-token",
         playwright_profile_directory="Profile 3",
+        browser_cloud_relay=False,
     )
 
     with patch.object(playwright_browser, "get_settings", return_value=settings):

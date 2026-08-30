@@ -10,13 +10,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_DIRECTORIES = ("app", "agents", "tools", "meetings")
+BUILD_FILES = (
+    "Dockerfile", "infra/browser-runtime/package.json",
+    "infra/browser-runtime/pnpm-lock.yaml", "infra/browser-runtime/pnpm-workspace.yaml",
+    "patches/playwright-core@1.63.0-alpha-2026-08-05.patch", "backend/requirements.txt",
+)
 
 
 def stage_backend(root: Path = ROOT) -> Path:
     destination = Path(tempfile.mkdtemp(prefix="front-desk-backend-build-"))
-    shutil.copy2(root / "Dockerfile", destination / "Dockerfile")
-    (destination / "backend").mkdir()
-    shutil.copy2(root / "backend/requirements.txt", destination / "backend/requirements.txt")
+    for name in BUILD_FILES:
+        target = destination / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(root / name, target)
     for directory in RUNTIME_DIRECTORIES:
         for source in sorted((root / "backend" / directory).rglob("*.py")):
             if "__pycache__" in source.parts or source.is_symlink():

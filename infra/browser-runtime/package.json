@@ -1,0 +1,9 @@
+{
+  "name": "@front-desk/browser-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.24.0",
+  "dependencies": {
+    "@playwright/mcp": "0.0.79"
+  }
+}

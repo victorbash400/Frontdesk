@@ -71,6 +71,28 @@ index d53d1ca..073fea0 100644
          response2.addAction({ name: "navigate", url: url3 });
        }
      });
+@@ -72614,5 +72593,21 @@ var init_cdpRelay = __esm({
+       async _openConnectPageInBrowser(clientName) {
+         const mcpRelayEndpoint = `${this._wsHost}${this._extensionPath}`;
++        const cloudConnectUrl = process.env.FRONT_DESK_BROWSER_CONNECT_URL;
++        if (cloudConnectUrl) {
++          const response = await fetch(cloudConnectUrl, {
++            method: "POST",
++            headers: {
++              "Content-Type": "application/json",
++              "X-Front-Desk-Account": process.env.FRONT_DESK_BROWSER_ACCOUNT_ID,
++              "X-Front-Desk-Internal-Secret": process.env.FRONT_DESK_INTERNAL_SECRET
++            },
++            body: JSON.stringify({ endpoint: mcpRelayEndpoint }),
++            signal: AbortSignal.timeout(10000)
++          });
++          if (!response.ok)
++            throw new Error(`Cloud browser connection rejected: ${response.status} ${await response.text()}`);
++          return;
++        }
+         const url3 = new URL(`chrome-extension://${playwrightExtensionId}/connect.html`);
+         url3.searchParams.set("mcpRelayUrl", mcpRelayEndpoint);
+         const client = {
 @@ -72623,7 +72602,8 @@ var init_cdpRelay = __esm({
          if (testUserDataDir)
            args.push(`--user-data-dir=${testUserDataDir}`);

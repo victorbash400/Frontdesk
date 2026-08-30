@@ -9,6 +9,7 @@
     "outDir": "./lib",
     "resolveJsonModule": true,
     "types": ["chrome", "vite/client"],
+    "skipLibCheck": true,
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "noEmit": true,
