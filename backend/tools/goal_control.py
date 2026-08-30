@@ -78,6 +78,7 @@ def complete_goal(
             if missing:
                 return {"status": "failed", "error": f"Meeting completion evidence is still missing: {', '.join(missing)}."}
     tool_context.actions.end_of_agent = True
+    tool_context.actions.skip_summarization = True
     return {
         "status": "completed",
         "summary": summary.strip(),
@@ -95,6 +96,7 @@ def ask_goal_question(
     """Ask one specific question when required information or access is missing."""
     if blocking:
         tool_context.actions.end_of_agent = True
+        tool_context.actions.skip_summarization = True
     return {
         "status": "waiting_for_user" if blocking else "question_recorded",
         "question": question.strip(),
