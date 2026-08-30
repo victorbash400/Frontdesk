@@ -1,0 +1,22 @@
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN corepack enable && apt-get update && apt-get install -y --no-install-recommends zip && rm -rf /var/lib/apt/lists/*
+COPY . .
+RUN pnpm install --frozen-lockfile
+ARG FRONT_DESK_APP_ORIGIN
+ARG FRONT_DESK_API_ORIGIN
+RUN test -n "$FRONT_DESK_APP_ORIGIN" && test -n "$FRONT_DESK_API_ORIGIN"
+RUN VITE_FRONT_DESK_APP_ORIGIN=$FRONT_DESK_APP_ORIGIN VITE_FRONT_DESK_API_ORIGIN=$FRONT_DESK_API_ORIGIN pnpm extension:build
+RUN mkdir -p public/downloads && cd extension/dist && zip -qr /app/public/downloads/front-desk-extension.zip .
+RUN pnpm build
+
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=8080
+COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=build --chown=node:node /app/.next/static ./.next/static
+COPY --from=build --chown=node:node /app/public ./public
+USER node
+EXPOSE 8080
+CMD ["node", "server.js"]

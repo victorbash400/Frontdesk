@@ -1,0 +1,14 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - FRONT_DESK_APP_ORIGIN=${_APP_ORIGIN}
+      - --build-arg
+      - FRONT_DESK_API_ORIGIN=${_API_ORIGIN}
+      - -t
+      - ${_IMAGE}
+      - .
+images:
+  - ${_IMAGE}
+timeout: 1200s
