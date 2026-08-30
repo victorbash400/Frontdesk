@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-from sqlalchemy import DateTime, ForeignKey, String, Text, update
+from sqlalchemy import DateTime, ForeignKey, String, Text, delete, update
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.auth import require_account_id
@@ -69,6 +69,10 @@ async def register_connection(body: ConnectionRequest, account_id: str = Depends
     ticket = secrets.token_urlsafe(32)
     connection_id = hashlib.sha256(ticket.encode()).hexdigest()
     with SessionLocal() as session:
+        session.execute(delete(BrowserRelayConnection).where(
+            BrowserRelayConnection.state == "closed",
+            BrowserRelayConnection.expires_at < datetime.now(timezone.utc),
+        ))
         session.add(BrowserRelayConnection(
             id=connection_id, account_id=account_id, instance_id=INSTANCE_ID,
             local_endpoint=endpoint, expires_at=datetime.now(timezone.utc) + timedelta(minutes=2),
