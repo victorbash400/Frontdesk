@@ -6,7 +6,6 @@ import logging
 import smtplib
 import ssl
 import threading
-from contextlib import ExitStack
 from dataclasses import dataclass
 from email.header import decode_header
 from email.message import EmailMessage, Message
@@ -26,6 +25,7 @@ from .secret_store import decrypt_secret, encrypt_secret
 from .runtime_lock import runtime_lock
 
 
+OWNERSHIP_RETRY_SECONDS = 30
 TITAN_IMAP_HOST = "imap.titan.email"
 TITAN_IMAP_PORT = 993
 TITAN_SMTP_HOST = "smtp.titan.email"
@@ -244,18 +244,9 @@ class MailboxManager:
         current = self._tasks.get(mailbox_id)
         if current and not current.done():
             return False
-        lease = ExitStack()
-        if not lease.enter_context(runtime_lock("mailbox", mailbox_id)):
-            lease.close()
-            return False
-        try:
-            task = asyncio.create_task(self._run(mailbox_id), name=f"mailbox-{mailbox_id}")
-        except BaseException:
-            lease.close()
-            raise
+        task = asyncio.create_task(self._run(mailbox_id), name=f"mailbox-{mailbox_id}")
         self._tasks[mailbox_id] = task
         def finished(done):
-            lease.close()
             if self._tasks.get(mailbox_id) is done:
                 self._tasks.pop(mailbox_id, None)
         task.add_done_callback(finished)
@@ -278,6 +269,22 @@ class MailboxManager:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _run(self, mailbox_id: str) -> None:
+        # A mailbox is owned by exactly one instance, but the owner is replaced on every
+        # release and scale-down. Ownership is therefore reclaimed here rather than only
+        # at startup, so a standby instance takes the listener over instead of leaving
+        # the mailbox unattended until some later instance happens to boot.
+        standby = False
+        while True:
+            with runtime_lock("mailbox", mailbox_id) as owned:
+                if owned:
+                    await self._listen(mailbox_id)
+                    return
+            if not standby:
+                logger.info("mailbox=%s listener=standby", mailbox_id)
+                standby = True
+            await asyncio.sleep(OWNERSHIP_RETRY_SECONDS)
+
+    async def _listen(self, mailbox_id: str) -> None:
         delay = 1
         logger.info("mailbox=%s listener=started", mailbox_id)
         while True:
