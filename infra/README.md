@@ -8,6 +8,10 @@ scoped ADK agent definitions and calls back through the authenticated tool gatew
 ## Release checks
 
 - Run the backend test suite with `requirements-dev.txt` installed.
+- Keep the container interpreter at the Python version the tests run on. The mailbox
+  listener calls `imaplib.IMAP4.idle()`, which exists only from Python 3.14; on an
+  older base image the IDLE wait fails every cycle with `Unknown IMAP4 command: 'idle'`
+  and live mail delivery silently degrades to retry polling.
 - Run `python -m pip check` in both backend and Agent Engine build environments.
 - Inspect `gcloud meta list-files-for-upload` before submitting a build. The root
   `.gcloudignore` allows only the Dockerfile's backend inputs. Local databases,
