@@ -19,6 +19,7 @@ from app.database import SessionLocal
 from app.event_stream import account_events
 from app.gemini import create_genai_client
 from app.models import DocumentContent, Goal, Node, Workspace
+from app.goal_tasks import goal_tasks
 from app.runtime_lock import runtime_lock
 from .coordinator_tools import execute_coordinator_tool
 from .models import Meeting
@@ -240,7 +241,15 @@ async def _run_identity_bound_agent(
             logger.info("meeting=%s runtime=%s live=%s gemini=connected model=%s", meeting_id, identity.runtime_id, live_session_id, settings.gemini_voice_model)
             await websocket.send_json({"type": "agent_ready"})
             logger.info("meeting=%s runtime=%s live=%s agent=ready_waiting_for_speech resumed=%s", meeting_id, identity.runtime_id, live_session_id, bool(session_handle))
-            outcome = await _bridge(websocket, live, account_id, context.client_id, meeting_id, session_state)
+            outcome = await _bridge(
+                websocket,
+                live,
+                account_id,
+                context.client_id,
+                meeting_id,
+                str(context.goal["id"]) if context.goal else None,
+                session_state,
+            )
         if outcome == "completed":
             with SessionLocal() as session:
                 meeting = require_meeting(session, account_id, meeting_id)
@@ -337,6 +346,7 @@ async def _bridge(
     account_id: str,
     client_id: str,
     meeting_id: str,
+    goal_id: str | None,
     session_state: dict[str, object],
 ) -> str:
     model_idle = asyncio.Event()
@@ -436,7 +446,6 @@ async def _bridge(
 
     async def send_agent_events() -> str:
         sequence = 0
-        client_turn_sequence = 0
         transcript_ids: dict[str, str] = {}
         transcript_text: dict[str, str] = {"user": "", "assistant": ""}
         audio_sent = False
@@ -456,17 +465,27 @@ async def _bridge(
                     for call in response.tool_call.function_calls or []:
                         call_id = call.id or f"{call.name}-{uuid4()}"
                         arguments = dict(call.args or {})
-                        if call.name in {"prepare_coordinator_action", "confirm_coordinator_action"}:
-                            arguments["_client_turn_sequence"] = client_turn_sequence
-                            arguments["_observed_client_answer"] = transcript_text["user"].strip()
                         logger.info("meeting=%s tool=%s status=started", meeting_id, call.name)
                         await websocket.send_json({"type": "tool_call", "id": call_id, "name": call.name, "args": arguments})
                         if call.name == "end_meeting":
-                            result = {"status": "completed", "summary": str(arguments.get("summary") or "")}
+                            summary = str(arguments.get("summary") or "").strip()
+                            blocker = goal_tasks.meeting_end_blocker(account_id, goal_id, meeting_id) if goal_id else ""
+                            if blocker:
+                                result = {"status": "failed", "error": blocker}
+                                await live.send_tool_response(function_responses=[types.FunctionResponse(id=call.id, name=call.name, response=result)])
+                                with SessionLocal() as session:
+                                    record_agent_tool(session, meeting_id, call_id, call.name, arguments, result)
+                                await websocket.send_json({"type": "tool_response", "id": call_id, "name": call.name, "result": result})
+                                continue
+                            result = {"status": "completed", "summary": summary}
                             await live.send_tool_response(function_responses=[types.FunctionResponse(id=call.id, name=call.name, response=result)])
                             with SessionLocal() as session:
                                 record_agent_tool(session, meeting_id, call_id, call.name, arguments, result)
                                 mark_meeting_state(session, require_meeting(session, account_id, meeting_id), "completed")
+                            if goal_id:
+                                result["goal"] = await goal_tasks.finish_meeting_goal(
+                                    account_id, goal_id, meeting_id, summary,
+                                )
                             await websocket.send_json({"type": "meeting_complete", "summary": result["summary"]})
                             return "completed"
                         try:
@@ -480,7 +499,13 @@ async def _bridge(
                         await live.send_tool_response(function_responses=[types.FunctionResponse(id=call.id, name=call.name, response=result)])
                         with SessionLocal() as session:
                             record_agent_tool(session, meeting_id, call_id, call.name, arguments, result)
-                        logger.info("meeting=%s tool=%s status=completed", meeting_id, call.name)
+                        logger.info(
+                            "meeting=%s tool=%s status=completed result_status=%s error=%s",
+                            meeting_id,
+                            call.name,
+                            result.get("status"),
+                            result.get("error"),
+                        )
                         await websocket.send_json({"type": "tool_response", "id": call_id, "name": call.name, "result": result})
                 content = response.server_content
                 if not content:
@@ -495,8 +520,6 @@ async def _bridge(
                         continue
                     if role not in transcript_ids:
                         sequence += 1
-                        if role == "user":
-                            client_turn_sequence += 1
                         transcript_ids[role] = f"meeting-{role}-{sequence}"
                     transcript_text[role] += transcription.text
                     logger.info(

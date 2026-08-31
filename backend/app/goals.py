@@ -19,6 +19,39 @@ def validate_goal_plugin_ids(plugin_ids: list[str]) -> list[str]:
     return normalized
 
 
+def restore_goal_plugins(session: Session, account_id: str, goal_id: str) -> list[str]:
+    """Give a goal back every plugin its own skills require and the account has installed.
+
+    A run that stops midway can leave the goal holding fewer plugins than its skills need,
+    and resuming it then plans around the missing capability instead of restoring it, so
+    a case that must be resolved on a call quietly degrades into a written reply.
+    """
+    from app.models import PluginInstallation, Skill
+
+    goal = session.get(Goal, goal_id)
+    if not goal or goal.account_id != account_id:
+        return []
+    try:
+        skill_ids = json.loads(goal.skill_ids or "[]")
+        current = json.loads(goal.plugin_ids or "[]")
+    except ValueError:
+        return []
+    if not skill_ids:
+        return current
+    required: set[str] = set()
+    for raw in session.scalars(select(Skill.required_plugin_ids).where(Skill.id.in_(skill_ids))):
+        try:
+            required.update(json.loads(raw or "[]"))
+        except ValueError:
+            continue
+    installed = set(session.scalars(select(PluginInstallation.plugin_id).where(PluginInstallation.account_id == account_id)))
+    restored = sorted(set(current) | (required & installed))
+    if restored != sorted(current):
+        goal.plugin_ids = json.dumps(restored)
+        session.commit()
+    return restored
+
+
 def list_goals(session: Session, account_id: str, client_id: str | None = None) -> list[dict[str, object]]:
     query = select(Goal).where(Goal.account_id == account_id)
     if client_id:

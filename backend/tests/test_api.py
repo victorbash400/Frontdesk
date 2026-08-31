@@ -635,6 +635,85 @@ def test_goal_preflight_loads_aqualabs_store_only_when_requested() -> None:
     assert len(tools) == 6
 
 
+def test_goal_preflight_scopes_namespaces_to_the_current_task_skill() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "task-scope@example.com", "Task Scope")
+        headers = account_headers(account["id"])
+        with SessionLocal() as session:
+            skills = {item["name"]: item["id"] for item in list_skills(session, account["id"])}
+        goal_payload = client.post("/api/goals", headers=headers, json={
+            "client_id": "task-scope-client",
+            "text": "Inspect the store, then update Jira and Slack.",
+            "skill_ids": [skills["AquaLabs Customer Resolution"]],
+            "plugin_ids": ["aqualabs-store", "atlassian", "slack"],
+        }).json()
+
+    with SessionLocal() as session:
+        session.add_all([
+            PluginInstallation(account_id=account["id"], plugin_id="aqualabs-store"),
+            PluginInstallation(account_id=account["id"], plugin_id="atlassian"),
+            PluginInstallation(account_id=account["id"], plugin_id="slack"),
+        ])
+        assignment = GoalAssignment(
+            goal_id=goal_payload["id"],
+            title="Inspect the order",
+            instruction="Inspect the order without changing it.",
+            skill_ids=json.dumps([skills["AquaLabs Order Operations"]]),
+        )
+        session.add(assignment)
+        session.commit()
+        session.expunge(assignment)
+
+    manager = GoalTaskManager()
+    tools, toolsets = asyncio.run(manager._preflight(
+        account["id"], manager._goal(account["id"], goal_payload["id"]), assignment,
+    ))
+    registry = toolsets[0]
+    assert isinstance(registry, GoalToolRegistry)
+    assert "`aqualabs-store`" in registry.directory_prompt
+    assert "`atlassian`" not in registry.directory_prompt
+    assert "`slack`" not in registry.directory_prompt
+    assert "`titan-mail`" not in registry.directory_prompt
+    assert len(tools) == 6
+
+
+def test_goal_level_call_skill_does_not_block_non_call_task_completion() -> None:
+    with TestClient(app) as client:
+        account = create_account(client, "non-call-completion@example.com", "Non-call Completion")
+        with SessionLocal() as session:
+            resolution_skill_id = next(
+                item["id"] for item in list_skills(session, account["id"])
+                if item["name"] == "AquaLabs Customer Resolution"
+            )
+        goal_payload = client.post("/api/goals", headers=account_headers(account["id"]), json={
+            "client_id": "non-call-client",
+            "text": "Inspect an order without calling the client.",
+            "skill_ids": [resolution_skill_id],
+            "plugin_ids": [],
+        }).json()
+    with SessionLocal() as session:
+        assignment = GoalAssignment(
+            goal_id=goal_payload["id"],
+            title="Inspect order",
+            instruction="Inspect the order.",
+            expected_outputs=json.dumps(["Verified finding"]),
+        )
+        session.add(assignment)
+        session.commit()
+        assignment_id = assignment.id
+    context = SimpleNamespace(
+        state={"goal_id": goal_payload["id"], "assignment_id": assignment_id},
+        actions=SimpleNamespace(end_of_agent=False, skip_summarization=False),
+    )
+    result = complete_goal(
+        "Inspection complete.",
+        "Observed the stored order.",
+        context,
+        outputs=[{"name": "Verified finding", "evidence": "Order was inspected and left unchanged."}],
+    )
+    assert result["status"] == "completed"
+
+
 def test_goal_client_tools_resolve_only_from_the_front_desk_directory() -> None:
     with TestClient(app) as client:
         account = create_account(client, "client-tools@example.com", "Client Tools")
@@ -881,6 +960,18 @@ def test_task_completion_requires_evidence_for_every_planned_output() -> None:
     assert context.actions.end_of_agent is False
     completed = complete_goal("Report created.", "Created through Docs.", context, outputs=[{"name": "Verified report URL", "evidence": "https://docs.google.com/document/d/report-id/edit"}])
     assert completed["status"] == "completed"
+
+    keyed = complete_goal(
+        "Report created.",
+        "Created through Docs.",
+        context,
+        outputs=[{"Verified report URL": "https://docs.google.com/document/d/report-id/edit"}],
+    )
+    assert keyed["status"] == "completed"
+    assert keyed["outputs"] == [{
+        "name": "Verified report URL",
+        "evidence": "https://docs.google.com/document/d/report-id/edit",
+    }]
     assert context.actions.end_of_agent is True
 
 

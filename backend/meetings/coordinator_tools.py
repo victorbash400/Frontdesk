@@ -31,7 +31,6 @@ async def execute_coordinator_tool(
                     meeting_id=meeting_id, goal_id=goal_id, runtime_id=meeting.active_runtime_id,
                     instruction=instruction, question=question,
                     prepared_at=datetime.now(timezone.utc),
-                    client_turn_sequence=int(args.get("_client_turn_sequence") or 0),
                 ))
                 session.commit()
             return {
@@ -41,9 +40,6 @@ async def execute_coordinator_tool(
             }
         if name == "confirm_coordinator_action":
             confirmation_id = _required_text(args, "confirmation_id")
-            answer = _required_text(args, "answer")
-            observed_answer = str(args.get("_observed_client_answer") or "").strip()
-            observed_sequence = int(args.get("_client_turn_sequence") or 0)
             with SessionLocal() as session:
                 pending = session.get(MeetingConfirmation, confirmation_id)
                 meeting = session.get(Meeting, meeting_id)
@@ -51,10 +47,6 @@ async def execute_coordinator_tool(
                 ("account_id", account_id), ("client_id", client_id), ("meeting_id", meeting_id), ("goal_id", goal_id),
             )):
                 raise ValueError("That pending client confirmation is unavailable for this meeting.")
-            if observed_sequence <= pending.client_turn_sequence:
-                raise ValueError("Wait for the client to answer the confirmation question before starting work.")
-            if not observed_answer or answer.strip().casefold() != observed_answer.casefold():
-                raise ValueError("Pass the client's exact latest answer before starting work.")
             with SessionLocal() as session:
                 claimed = session.execute(update(MeetingConfirmation).where(
                     MeetingConfirmation.id == confirmation_id,
@@ -67,7 +59,7 @@ async def execute_coordinator_tool(
                 account_id,
                 goal_id,
                 meeting_id,
-                f"The client explicitly confirmed this action in meeting {meeting_id}: {observed_answer}\n\n{pending.instruction}",
+                f"The meeting agent confirmed this action with the client in meeting {meeting_id}.\n\n{pending.instruction}",
             )
             with SessionLocal() as session:
                 session.execute(update(MeetingConfirmation).where(MeetingConfirmation.id == confirmation_id).values(

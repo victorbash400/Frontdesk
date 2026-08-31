@@ -63,6 +63,18 @@ def _initialize_database() -> None:
             if column not in meeting_columns:
                 with engine.begin() as connection:
                     connection.execute(text(f"ALTER TABLE meetings ADD COLUMN {column} VARCHAR(64)"))
+    if "meeting_confirmations" in inspector.get_table_names():
+        confirmation_columns = {
+            column["name"] for column in inspector.get_columns("meeting_confirmations")
+        }
+        if "client_turn_sequence" in confirmation_columns:
+            with engine.begin() as connection:
+                connection.execute(text(
+                    "ALTER TABLE meeting_confirmations DROP COLUMN client_turn_sequence"
+                ))
+    if "nodes" in inspector.get_table_names() and "hidden" not in {column["name"] for column in inspector.get_columns("nodes")}:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE nodes ADD COLUMN hidden BOOLEAN NOT NULL DEFAULT FALSE"))
     if "goals" in inspector.get_table_names():
         goal_columns = {column["name"] for column in inspector.get_columns("goals")}
         with engine.begin() as connection:

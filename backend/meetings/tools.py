@@ -21,6 +21,7 @@ async def create_client_meeting(
     goal_id: str | None = None,
 ) -> dict[str, object]:
     """Create a Google Meet calendar invitation for the current client."""
+    _reject_nested_meeting_action(tool_context)
     account_id = str(tool_context.state.get("account_id") or "")
     client_id = str(tool_context.state.get("client_id") or "")
     if not account_id or not client_id:
@@ -51,6 +52,7 @@ async def create_instant_client_meeting(
     description: str = "",
 ) -> dict[str, object]:
     """Create an immediate 30-minute Google Meet space without a Calendar event."""
+    _reject_nested_meeting_action(tool_context)
     account_id = str(tool_context.state.get("account_id") or "")
     client_id = str(tool_context.state.get("client_id") or "")
     goal_id = str(tool_context.state.get("goal_id") or "") or None
@@ -99,3 +101,11 @@ def wait_for_client_in_meeting(meeting_id: str, tool_context: ToolContext) -> di
             raise ValueError(f"The meeting worker is not waiting for the client; current state is {meeting.state}.")
     logger.info("meeting=%s goal_worker=external_wait state=%s", meeting_id, meeting.state)
     return {"status": "waiting", "meeting_id": meeting_id, "reason": "Waiting for the client to join the emailed Meet link."}
+
+
+def _reject_nested_meeting_action(tool_context: ToolContext) -> None:
+    source_meeting_id = str(tool_context.state.get("source_meeting_id") or "")
+    if source_meeting_id:
+        raise RuntimeError(
+            f"This task belongs to active meeting {source_meeting_id}; creating another meeting is prohibited."
+        )

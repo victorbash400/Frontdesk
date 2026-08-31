@@ -3,16 +3,18 @@ import asyncio
 import json
 import inspect
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from agents.meet_agent import MEET_AGENT_INSTRUCTION, MeetAgentContext, live_config
 from agents.goal_planner import GoalPlan, GoalTaskOperation
 from app.database import SessionLocal
-from app.goal_tasks import GoalTaskManager
-from app.models import GoalAssignment, GoalNotification
+from app.goal_tasks import GoalTaskManager, _allowed_tool_ids
+from app.models import Goal, GoalActivity, GoalAssignment, GoalNotification
 from app.config import get_settings
 from app.main import app
 from meetings.agent_session import AgentIdentity, _bridge, _coordinator_notification, _pcm_peak, _register_bridge_and_wait_for_participant, _run_identity_bound_agent, create_agent_ticket, verify_agent_ticket
@@ -20,7 +22,7 @@ from meetings.browser_worker import _join_meeting, join_meeting
 from meetings.events import decode_pubsub_event
 from meetings.coordinator_tools import execute_coordinator_tool
 from meetings.models import Meeting, MeetingEvent
-from meetings.service import create_instant_meeting, record_agent_tool
+from meetings.service import create_instant_meeting, mark_meeting_state, record_agent_tool
 from meetings.sample import ensure_angeline_sample
 from tools.supervisor_tools import execute_client_tool
 
@@ -159,12 +161,102 @@ def test_meet_agent_is_conversation_only_and_ticket_is_meeting_scoped() -> None:
 
     assert "Remain silent until the session reports that the client has arrived" in MEET_AGENT_INSTRUCTION
     assert "without making any startup tool calls" in MEET_AGENT_INSTRUCTION
+    assert "handling it in the background and will tell them when it is finished" in MEET_AGENT_INSTRUCTION
     assert "Victor Bash" in str(config.system_instruction)
     assert "browser" not in " ".join(declarations)
     assert declarations == [
         "prepare_coordinator_action", "confirm_coordinator_action", "inspect_coordinator_task", "list_coordinator_tasks",
         "steer_coordinator_task", "cancel_coordinator_task", "answer_coordinator_question", "end_meeting",
     ]
+
+
+def test_completed_meeting_closes_runtime_and_finishes_owning_goal() -> None:
+    with TestClient(app) as client:
+        account = _account(client, "meeting-finish@example.com")
+        with SessionLocal() as session:
+            sample = ensure_angeline_sample(session, account["id"])
+            goal = Goal(
+                account_id=account["id"], client_id=sample["clientId"],
+                text="Resolve the client issue on a call.", situation="Client is waiting.",
+            )
+            session.add(goal)
+            session.flush()
+            waiting = GoalAssignment(
+                goal_id=goal.id, title="Talk with the client",
+                instruction="Join the call and resolve the issue.", status="blocked",
+                phase="external_wait", expected_outputs=json.dumps(["Confirmed call outcome"]),
+            )
+            meeting = Meeting(
+                account_id=account["id"], client_id=sample["clientId"], goal_id=goal.id,
+                client_email="client@example.com", title="Resolve issue", state="agent_active",
+                active_agent_ticket_id="ticket", active_runtime_id="runtime",
+                active_bridge_id="bridge", active_tab_id="42",
+                start_time=datetime.now(timezone.utc),
+                end_time=datetime.now(timezone.utc) + timedelta(minutes=30),
+            )
+            session.add_all([waiting, meeting])
+            session.flush()
+            session.add(GoalActivity(
+                goal_id=goal.id, kind="external_wait", summary="Waiting for client.",
+                evidence=json.dumps({"task_id": waiting.id, "meeting_id": meeting.id}),
+            ))
+            session.commit()
+            goal_id, meeting_id, waiting_id = goal.id, meeting.id, waiting.id
+            mark_meeting_state(session, meeting, "completed")
+
+        result = asyncio.run(GoalTaskManager().finish_meeting_goal(
+            account["id"], goal_id, meeting_id, "Client confirmed the issue is resolved.",
+        ))
+
+        assert result["status"] == "completed"
+        with SessionLocal() as session:
+            meeting = session.get(Meeting, meeting_id)
+            task = session.get(GoalAssignment, waiting_id)
+            goal = session.get(Goal, goal_id)
+            assert meeting and meeting.state == "completed" and meeting.completed_at
+            assert not any((meeting.active_agent_ticket_id, meeting.active_runtime_id, meeting.active_bridge_id, meeting.active_tab_id))
+            assert task and task.status == "completed" and task.progress == 100
+            assert goal and goal.status == "completed" and goal.run_state == "completed"
+
+
+def test_meeting_cannot_end_while_delegated_work_is_unfinished() -> None:
+    with TestClient(app) as client:
+        account = _account(client, "meeting-end-blocker@example.com")
+        with SessionLocal() as session:
+            sample = ensure_angeline_sample(session, account["id"])
+            meeting = Meeting(
+                account_id=account["id"], client_id=sample["clientId"], goal_id=sample["goalId"],
+                client_email="client@example.com", title="Active work", state="agent_active",
+                start_time=datetime.now(timezone.utc),
+                end_time=datetime.now(timezone.utc) + timedelta(minutes=30),
+            )
+            session.add(meeting)
+            session.flush()
+            session.add(GoalAssignment(
+                goal_id=sample["goalId"], source_meeting_id=meeting.id, auxiliary=True,
+                title="Check the order", instruction="Check the order.", status="running", phase="working",
+            ))
+            session.commit()
+            meeting_id = meeting.id
+
+        blocker = GoalTaskManager().meeting_end_blocker(account["id"], sample["goalId"], meeting_id)
+        assert blocker == "Meeting work is still unfinished: Check the order."
+
+
+def test_meeting_delegated_worker_cannot_create_another_meeting() -> None:
+    from meetings.tools import _reject_nested_meeting_action
+
+    context = SimpleNamespace(state={"source_meeting_id": "meeting-active"})
+
+    with pytest.raises(RuntimeError, match="creating another meeting is prohibited"):
+        _reject_nested_meeting_action(context)
+
+
+def test_meeting_delegated_worker_exposes_only_aqualabs_store() -> None:
+    assert _allowed_tool_ids(
+        ["aqualabs-store", "atlassian", "browser-use", "google-workspace", "slack"],
+        from_meeting=True,
+    ) == ["aqualabs-store"]
 
 
 def test_coordinator_tasks_are_bound_to_the_exact_meeting() -> None:
@@ -222,28 +314,16 @@ def test_meeting_delegation_uses_the_persisted_goal_and_meeting_identity() -> No
                 {
                     "instruction": "Check the exact payment record and report verified evidence.",
                     "question": "Would you like me to check that payment record now?",
-                    "_client_turn_sequence": 1,
                 },
             ))
-            premature = asyncio.run(execute_coordinator_tool(
-                account["id"], sample["clientId"], meeting_id, "confirm_coordinator_action",
-                {"confirmation_id": prepared["confirmation_id"], "answer": "Yes, please check it now."},
-            ))
-            assert premature == {"status": "failed", "error": "Wait for the client to answer the confirmation question before starting work."}
-            delegate.assert_not_awaited()
             result = asyncio.run(execute_coordinator_tool(
                 account["id"], sample["clientId"], meeting_id, "confirm_coordinator_action",
-                {
-                    "confirmation_id": prepared["confirmation_id"],
-                    "answer": "Yes, please check it now.",
-                    "_client_turn_sequence": 2,
-                    "_observed_client_answer": "Yes, please check it now.",
-                },
+                {"confirmation_id": prepared["confirmation_id"]},
             ))
 
         assert result == {"status": "running", "task_ids": ["task-1"]}
         delegated_instruction = delegate.await_args.args[3]
-        assert "The client explicitly confirmed this action" in delegated_instruction
+        assert "The meeting agent confirmed this action with the client" in delegated_instruction
         assert "Check the exact payment record" in delegated_instruction
 
 
@@ -477,7 +557,7 @@ def test_media_bridge_awaits_cancelled_live_receiver() -> None:
 
     async def exercise() -> None:
         try:
-            await _bridge(Socket(), Live(), "account", "client", "meeting", {})  # type: ignore[arg-type]
+            await _bridge(Socket(), Live(), "account", "client", "meeting", None, {})  # type: ignore[arg-type]
         except Exception as error:
             assert error.__class__.__name__ == "WebSocketDisconnect"
         assert live_receiver_closed.is_set()

@@ -276,6 +276,10 @@ def mark_meeting_state(session: Session, meeting: Meeting, state: str) -> None:
     meeting.state = state
     if state == "completed":
         meeting.completed_at = datetime.now(timezone.utc)
+        meeting.active_agent_ticket_id = None
+        meeting.active_runtime_id = None
+        meeting.active_bridge_id = None
+        meeting.active_tab_id = None
     session.commit()
     _publish(meeting)
 

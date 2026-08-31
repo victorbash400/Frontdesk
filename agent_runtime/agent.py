@@ -43,7 +43,7 @@ def create_agent() -> Agent:
     return Agent(
         name="front_desk_runtime",
         model=Gemini(
-            model="gemini-3-flash-preview",
+            model="gemini-3.6-flash",
             client_kwargs={"vertexai": True, "project": os.environ["FRONT_DESK_CLOUD_PROJECT"], "location": "global"},
             retry_options=types.HttpRetryOptions(attempts=1),
         ),

@@ -21,7 +21,7 @@ from app.database import SessionLocal
 from app.event_stream import account_events
 from app.goal_tool_ui import describe_goal_tool
 from app.goals import create_notification, require_goal
-from app.models import Goal, GoalActivity, GoalAssignment, GoalBrowserPreview, GoalTaskUpdate, PluginInstallation, Skill
+from app.models import DocumentContent, Goal, GoalActivity, GoalAssignment, GoalBrowserPreview, GoalTaskUpdate, Node, PluginInstallation, Skill
 from app.plugin_service import PLUGIN_IDS
 from app.skills import list_skills
 from app.mailboxes import titan_tools
@@ -30,7 +30,7 @@ from tools.client_context import list_clients, read_client_profile
 from tools.goal_tool_registry import GoalToolRegistry
 from tools.goal_control import ask_goal_question, complete_goal, update_goal_progress
 from tools.tool_failures import begin_single_tool, finish_single_tool, stop_on_tool_error
-from meetings.models import MeetingSubmission
+from meetings.models import Meeting, MeetingSubmission
 from app.agent_runner import create_runner
 from app.runtime_lock import runtime_lock
 
@@ -39,7 +39,9 @@ WORKER_INSTRUCTION = """You are Front Desk's goal worker. Complete the assigned 
 
 Preserve the exact requested outcome. Do not add optional research artifacts, tickets, account notes, Slack posts, email, scheduling, or follow-up work unless the task requires them. A request to call or speak with a client without a future time means an immediate call: create a 30-minute meeting beginning at the current time, invite the client's profile email, join it, and wait silently for the client. Do not ask the Front Desk owner to choose a time for an immediate call. A call is complete only after an actual live meeting with that client. Creating a support case, posting an internal notification, or proposing a meeting time is not contact and must never be reported as contact. For an explicitly future meeting with no confirmed time, ask the client for availability through the client's communication channel and persist the external wait. Use ask_goal_question only for a decision or ambiguity that the Front Desk owner must resolve; never use it to ask the owner for information that should come from the client.
 
-Front Desk's client directory is the only authority for client identity. The task session contains the assigned client ID, so call read_client_profile without an ID first. If the request names a different or unclear client, call list_clients and match only an unambiguous client name, then read_client_profile with its exact ID. Never search Gmail, Slack, Drive, Jira, the browser, or another plugin to discover who a client is. If the client is absent or ambiguous in the Front Desk list, use ask_goal_question and do not guess. After identity is resolved, load only the plugin namespace required for the next concrete action. Do not load unrelated namespaces speculatively.
+The current task instruction and expected outputs are authoritative. A skill applies only to the task that selected it; instructions from a broader goal or another task never add work here. Do not perform later task-board work early. After every expected output for this task is verified, call complete_goal immediately. Use only exact namespace IDs from the capability directory. If a namespace is unavailable, do not guess aliases, and never call a function that is not present in the current tool surface.
+
+Front Desk's client directory is the only authority for client identity. Unless the task message already includes a verified client and compact profile from an active meeting, call read_client_profile without an ID first. If the request names a different or unclear client, call list_clients and match only an unambiguous client name, then read_client_profile with its exact ID. Never search Gmail, Slack, Drive, Jira, the browser, or another plugin to discover who a client is. If the client is absent or ambiguous in the Front Desk list, use ask_goal_question and do not guess. After identity is resolved, load only the plugin namespace required for the next concrete action. Do not load unrelated namespaces speculatively.
 
 Report only observed results. Use update_goal_progress after each meaningful milestone. Each update must state what you learned, changed, or verified and what you will do next. Never write filler such as task accepted, starting, working, or waiting.
 
@@ -125,6 +127,74 @@ class GoalTaskManager:
         logger.info("meeting=%s submission=%s coordinator=accepted instruction=%r", meeting_id, submission_id, direction)
         return {"status": "accepted", "goal_id": goal_id, "submission_id": submission_id}
 
+    def meeting_end_blocker(self, account_id: str, goal_id: str, meeting_id: str) -> str:
+        """Return why a live call cannot end cleanly, or an empty string when it can."""
+        self._goal(account_id, goal_id)
+        with SessionLocal() as session:
+            unfinished = list(session.scalars(select(GoalAssignment).where(
+                GoalAssignment.goal_id == goal_id,
+                GoalAssignment.source_meeting_id == meeting_id,
+                GoalAssignment.status.not_in(("completed", "cancelled")),
+            )))
+        if not unfinished:
+            return ""
+        titles = ", ".join(item.title or item.instruction for item in unfinished)
+        return f"Meeting work is still unfinished: {titles}."
+
+    async def finish_meeting_goal(
+        self,
+        account_id: str,
+        goal_id: str,
+        meeting_id: str,
+        summary: str,
+    ) -> dict[str, object]:
+        """Resolve the call-wait task, then resume or complete its owning goal."""
+        blocker = self.meeting_end_blocker(account_id, goal_id, meeting_id)
+        if blocker:
+            return {"status": "failed", "error": blocker}
+        waiting_id: str | None = None
+        with SessionLocal() as session:
+            activities = list(session.scalars(select(GoalActivity).where(
+                GoalActivity.goal_id == goal_id,
+                GoalActivity.kind == "external_wait",
+            ).order_by(GoalActivity.created_at.desc())))
+            for activity in activities:
+                try:
+                    evidence = json.loads(activity.evidence)
+                except (TypeError, ValueError):
+                    continue
+                if str(evidence.get("meeting_id") or "") != meeting_id:
+                    continue
+                candidate = session.get(GoalAssignment, str(evidence.get("task_id") or ""))
+                if candidate and not candidate.auxiliary and candidate.status == "blocked" and candidate.phase == "external_wait":
+                    waiting_id = candidate.id
+                    expected_outputs = [str(item) for item in json.loads(candidate.expected_outputs)]
+                    break
+            else:
+                expected_outputs = []
+        clean_summary = summary.strip() or "Client meeting completed."
+        if waiting_id:
+            self._complete_assignment(account_id, goal_id, waiting_id, {
+                "summary": clean_summary,
+                "evidence": f"Meeting {meeting_id} ended after the client confirmed the conversation was finished.",
+                "outputs": [
+                    {"name": name, "evidence": f"Verified by completed meeting {meeting_id}: {clean_summary}"}
+                    for name in expected_outputs
+                ],
+            })
+        with SessionLocal() as session:
+            queued = session.scalar(select(GoalAssignment.id).where(
+                GoalAssignment.goal_id == goal_id,
+                GoalAssignment.auxiliary.is_(False),
+                GoalAssignment.status == "queued",
+            ).order_by(GoalAssignment.created_at))
+        if queued:
+            self._set_goal_state(goal_id, "queued", self._assignment(queued).title)
+            started = await self.start(account_id, goal_id)
+            return {"status": "resumed" if started else "already_running", "goal_id": goal_id, "task_id": queued}
+        completed = self._complete_goal(account_id, goal_id)
+        return {"status": "completed" if completed else "meeting_completed", "goal_id": goal_id}
+
     async def _admit_meeting_submission(self, submission_id: str) -> None:
         with SessionLocal() as session:
             record = session.get(MeetingSubmission, submission_id)
@@ -188,7 +258,6 @@ class GoalTaskManager:
         for assignment_id in assignment_ids:
             if await self._run_assignment(account_id, goal_id, assignment_id) != "completed":
                 return
-        self._complete_goal(account_id, goal_id)
 
     async def cancel(self, goal_id: str) -> bool:
         worker = self._workers.get(goal_id)
@@ -351,7 +420,7 @@ class GoalTaskManager:
             self._publish_task(account_id, assignment_id)
             self._publish(account_id, goal_id, "running")
             selected_skills = self._assignment_skills(account_id, assignment)
-            runner = self._runner(tools, selected_skills)
+            runner = self._runner(tools, selected_skills, from_meeting=bool(assignment.source_meeting_id))
             session_id = hashlib.sha256(f"{account_id}:goal-worker:{goal_id}:{assignment_id}:{uuid4().hex}".encode()).hexdigest()
             existing = await sessions.get_session(app_name=runner.app_name, user_id=account_id, session_id=session_id)
             if not existing:
@@ -361,6 +430,7 @@ class GoalTaskManager:
                     "goal_id": goal.id,
                     "assignment_id": assignment_id,
                     "goal_intent": instruction,
+                    "source_meeting_id": assignment.source_meeting_id or "",
                 })
             completion: dict[str, Any] | None = None
             blocked = False
@@ -370,7 +440,7 @@ class GoalTaskManager:
             events = runner.run_async(
                 user_id=account_id,
                 session_id=session_id,
-                new_message=types.Content(role="user", parts=[types.Part.from_text(text=f"Goal ID: {goal.id}\nTask ID: {assignment_id}\nTask: {instruction}{handoff}")]),
+                new_message=types.Content(role="user", parts=[types.Part.from_text(text=f"Goal ID: {goal.id}\nTask ID: {assignment_id}\nTask: {instruction}{self._meeting_handoff(assignment)}{handoff}")]),
                 run_config=RunConfig(streaming_mode=StreamingMode.SSE),
             )
             async for event in events:
@@ -590,7 +660,8 @@ class GoalTaskManager:
         return assignment_ids
 
     async def _preflight(self, account_id: str, goal: Goal, assignment: GoalAssignment) -> tuple[list[Any], list[Any]]:
-        plugin_ids = list(dict.fromkeys(json.loads(goal.plugin_ids)))
+        goal_plugin_ids = list(dict.fromkeys(json.loads(goal.plugin_ids)))
+        plugin_ids = goal_plugin_ids
         unknown = [plugin_id for plugin_id in plugin_ids if plugin_id not in PLUGIN_IDS]
         if unknown:
             plugin_ids = [plugin_id for plugin_id in plugin_ids if plugin_id in PLUGIN_IDS]
@@ -607,15 +678,23 @@ class GoalTaskManager:
                 Skill.account_id == account_id,
                 Skill.id.in_(json.loads(assignment.skill_ids)),
             ))) if json.loads(assignment.skill_ids) else []
+        task_plugin_ids = {
+            plugin_id
+            for skill in assigned_skills
+            for plugin_id in json.loads(skill.required_plugin_ids)
+        }
+        if task_plugin_ids:
+            plugin_ids = [plugin_id for plugin_id in goal_plugin_ids if plugin_id in task_plugin_ids]
         missing = [plugin_id for plugin_id in plugin_ids if plugin_id not in installed]
         if missing:
             raise RuntimeError(f"Selected plugins are not installed: {', '.join(missing)}")
-        allowed_ids = [
-            namespace
-            for plugin_id in plugin_ids
-            for namespace in _plugin_namespaces(plugin_id)
-        ]
-        if titan_functions:
+        if assignment.source_meeting_id and "aqualabs-store" not in installed:
+            raise RuntimeError("AquaLabs Store must be installed for work delegated from a client meeting.")
+        allowed_ids = _allowed_tool_ids(plugin_ids, from_meeting=bool(assignment.source_meeting_id))
+        titan_skill_slugs = {"aqualabs-customer-resolution", "client-support-call", "email-goal-routing"}
+        if titan_functions and not assignment.source_meeting_id and (
+            not assigned_skills or any(skill.slug in titan_skill_slugs for skill in assigned_skills)
+        ):
             allowed_ids.append("titan-mail")
         initial_ids = _initial_tool_ids(assigned_skills, plugin_ids)
         registry = GoalToolRegistry(account_id, allowed_ids, initial_ids, titan_functions)
@@ -623,22 +702,50 @@ class GoalTaskManager:
             update_goal_progress,
             ask_goal_question,
             complete_goal,
-            list_clients,
-            read_client_profile,
             registry,
         ]
+        if not assignment.source_meeting_id:
+            tools[3:3] = [list_clients, read_client_profile]
         return tools, [registry]
 
-    def _runner(self, tools: list[Any], skills: list[Skill]) -> Runner:
+    def _runner(self, tools: list[Any], skills: list[Skill], *, from_meeting: bool = False) -> Runner:
         settings = get_settings()
         model = Gemini(model=settings.gemini_model, client_kwargs={"vertexai": True, "project": settings.google_cloud_project, "location": settings.google_cloud_location}, retry_options=types.HttpRetryOptions(attempts=1))
         skill_instructions = "\n\n".join(f"Skill: {skill.name} (version {skill.version})\n{skill.instructions}" for skill in skills)
         registry = next((tool for tool in tools if isinstance(tool, GoalToolRegistry)), None)
         directory = registry.directory_prompt if registry else "No plugin namespaces are available for this goal."
-        call_instruction = "For a direct client call, create a Meet space without a Calendar event, email its exact link to the client's profile email, join it with join_client_meeting, then call wait_for_client_in_meeting and end this worker run. The dedicated meeting worker alone monitors the participant and handles audio. Never use raw browser controls to add Meet attendees, send Meet chat invitations, choose meeting media, join a Front Desk meeting, or monitor a participant."
+        call_instruction = (
+            "This task came from an active client meeting. The verified client and compact profile are included in the task message. "
+            "Do not look up the client again. AquaLabs Store is the only application namespace permitted for meeting-delegated work. "
+            "Never use Jira, Slack, Google Workspace, Titan Mail, Drive, Docs, Browser Use, or another service. Never create, schedule, "
+            "email, join, replace, inspect, or end a meeting. Perform only the bounded AquaLabs Store action requested by the live conversation."
+            if from_meeting else
+            "For a direct client call, create a Meet space without a Calendar event, email its exact link to the client's profile email, join it with join_client_meeting, then call wait_for_client_in_meeting and end this worker run. The dedicated meeting worker alone monitors the participant and handles audio. Never use raw browser controls to add Meet attendees, send Meet chat invitations, choose meeting media, join a Front Desk meeting, or monitor a participant."
+        )
         instruction = f"{WORKER_INSTRUCTION}\n\n{call_instruction}\n\nPlugin namespace directory:\n{directory}" + (f"\n\nSelected organization skills for this task:\n{skill_instructions}" if skill_instructions else "")
         agent = Agent(name="front_desk_goal_worker", description="Completes one persistent Front Desk goal.", model=model, instruction=instruction, tools=tools, before_tool_callback=begin_single_tool, after_tool_callback=finish_single_tool, on_tool_error_callback=stop_on_tool_error, generate_content_config=types.GenerateContentConfig(thinking_config=types.ThinkingConfig(include_thoughts=True, thinking_level=types.ThinkingLevel.MEDIUM)))
         return create_runner(app=App(name="front_desk_goal_worker", root_agent=agent), session_service=sessions)
+
+    @staticmethod
+    def _meeting_handoff(assignment: GoalAssignment) -> str:
+        if not assignment.source_meeting_id:
+            return ""
+        with SessionLocal() as session:
+            meeting = session.get(Meeting, assignment.source_meeting_id)
+            if not meeting:
+                raise RuntimeError("The source meeting is unavailable.")
+            client = session.get(Node, meeting.client_id)
+            profile = session.scalar(select(DocumentContent.content).join(Node, Node.id == DocumentContent.node_id).where(
+                Node.parent_id == meeting.client_id,
+                Node.kind == "profile",
+                Node.trashed_at.is_(None),
+            )) or ""
+        return (
+            f"\n\nExisting live meeting: {meeting.id}"
+            f"\nVerified client: {client.name if client else meeting.client_id} <{meeting.client_email}>"
+            f"\nCompact client profile:\n{profile[:2000]}"
+            "\nThe client is already in this meeting. Do not create or join another call."
+        )
 
     def _assignment_skills(self, account_id: str, assignment: GoalAssignment) -> list[Skill]:
         skill_ids = json.loads(assignment.skill_ids)
@@ -905,6 +1012,12 @@ def _plugin_namespaces(plugin_id: str) -> tuple[str, ...]:
             "workspace.api",
         )
     return (plugin_id,)
+
+
+def _allowed_tool_ids(plugin_ids: list[str], *, from_meeting: bool) -> list[str]:
+    if from_meeting:
+        return ["aqualabs-store"]
+    return [namespace for plugin_id in plugin_ids for namespace in _plugin_namespaces(plugin_id)]
 
 
 def _initial_tool_ids(skills: list[Skill], selected_plugin_ids: list[str]) -> list[str]:

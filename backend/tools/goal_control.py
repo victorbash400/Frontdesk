@@ -43,7 +43,11 @@ def complete_goal(
     tool_context: ToolContext,
     outputs: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
-    """Finish the assigned task only after its persisted completion requirements are satisfied."""
+    """Finish the assigned task only after its persisted completion requirements are satisfied.
+
+    Every output should use ``{"name": "exact expected output", "evidence": "observed proof"}``.
+    For compatibility, ``{"exact expected output": "observed proof"}`` is also accepted.
+    """
     assignment_id = str(tool_context.state.get("assignment_id") or "")
     goal_id = str(tool_context.state.get("goal_id") or "")
     with SessionLocal() as session:
@@ -51,7 +55,7 @@ def complete_goal(
         if not assignment or assignment.goal_id != goal_id:
             return {"status": "failed", "error": "The active task identity is missing or invalid."}
         expected_outputs = [str(item).strip() for item in json.loads(assignment.expected_outputs) if str(item).strip()]
-        observed_outputs = outputs or []
+        observed_outputs = _normalize_outputs(outputs or [])
         output_evidence = {
             str(item.get("name") or "").strip().casefold(): str(item.get("evidence") or "").strip()
             for item in observed_outputs
@@ -85,6 +89,24 @@ def complete_goal(
         "evidence": evidence.strip(),
         "outputs": observed_outputs,
     }
+
+
+def _normalize_outputs(outputs: list[dict[str, str]]) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    for item in outputs:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        evidence = str(item.get("evidence") or "").strip()
+        if name and evidence:
+            normalized.append({"name": name, "evidence": evidence})
+            continue
+        normalized.extend(
+            {"name": str(key).strip(), "evidence": str(value).strip()}
+            for key, value in item.items()
+            if str(key).strip() and str(value).strip()
+        )
+    return normalized
 
 
 def ask_goal_question(

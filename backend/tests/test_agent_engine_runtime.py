@@ -22,7 +22,7 @@ from agent_runtime import relay
 def manifest(tools=None):
     return {
         "instruction": "Read the assigned client only. Use the available tools and stop after completion.",
-        "model": "gemini-3-flash-preview",
+        "model": "gemini-3.6-flash",
         "generation_config": {"thinking_config": {"thinking_level": "LOW"}},
         "tools": tools or [{"name": "load_goal_tools", "description": "Load selected capabilities."}],
     }

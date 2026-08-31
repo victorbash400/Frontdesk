@@ -41,11 +41,15 @@ def resolve_email_client(tool_context: ToolContext) -> dict[str, object]:
             ClientEmailIdentity.email == address,
         ))
         created = False
-        if identity:
-            client = session.get(Node, identity.client_id)
-            if not client or client.trashed_at or client.kind != "client":
-                return _failed("The sender identity points to an unavailable client.")
-        else:
+        client = session.get(Node, identity.client_id) if identity else None
+        if identity and (not client or client.trashed_at or client.kind != "client"):
+            # The identity outlived the client it named, which is what trashing a client
+            # leaves behind. Release it and resolve the sender again; keeping it would
+            # fail every future email from this address with no way to recover.
+            session.delete(identity)
+            session.flush()
+            identity, client = None, None
+        if not client:
             client = _find_legacy_client(session, workspace.id, address)
             if not client:
                 client = Node(workspace_id=workspace.id, parent_id=None, name=sender_name.strip() or address, kind="client")
@@ -209,6 +213,10 @@ def decide_email_action(
             plugin_ids = sorted(installed & required_plugins)
             snapshot = create_goal(session, account_id, client.id, objective, [skill.id] if skill else [], plugin_ids)
             dispatch_goal_id = str(snapshot["id"])
+            # Derive the plugin set from the goal's own skills rather than trusting the
+            # snapshot, so a new case always starts with every capability its skill needs.
+            from app.goals import restore_goal_plugins
+            restore_goal_plugins(session, account_id, dispatch_goal_id)
             conversation.goal_id = dispatch_goal_id
             message.goal_id = dispatch_goal_id
             add_goal_activity(session, account_id, dispatch_goal_id, "email_received", f"Email Agent created this goal from: {message.subject}")

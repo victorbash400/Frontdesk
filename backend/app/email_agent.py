@@ -70,6 +70,12 @@ class EmailAgentManager:
         await self.start(message_id, "Re-read this email and its current persisted context. Check how far the linked customer work has progressed, correct any failed or incomplete routing decision, and continue the same case without duplicating its client or goal.", fresh_session=True)
         return {"status": "queued", "message_id": message_id}
 
+    async def cancel(self, message_id: str) -> None:
+        task = self._tasks.pop(message_id, None)
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
     async def close(self) -> None:
         tasks = list(self._tasks.values())
         self._tasks.clear()

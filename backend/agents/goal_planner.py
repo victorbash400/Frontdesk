@@ -52,7 +52,7 @@ def create_goal_planner_runner(session_service: BaseSessionService) -> Runner:
         ),
         mode="chat",
         output_schema=GoalPlan,
-        instruction=PLANNER_INSTRUCTION + "\n\nFor a direct client call, select the Client Support Call skill when it is available; do not substitute the generic Web Workflows skill. The call worker creates an immediate Meet space, emails its link to the client, and joins it through the dedicated meeting worker.",
+        instruction=PLANNER_INSTRUCTION + "\n\nFor a direct client call, select the Client Support Call skill when it is available; do not substitute the generic Web Workflows skill. The call worker creates an immediate Meet space, emails its link to the client, and joins it through the dedicated meeting worker. Skills are procedures for the task that selected them, not global requirements for every task in the goal. Never add a call, email, ticket, or notification merely because a preferred goal skill mentions one.",
         generate_content_config=types.GenerateContentConfig(
             thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
             max_output_tokens=8192,

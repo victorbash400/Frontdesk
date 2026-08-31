@@ -45,6 +45,10 @@ class Node(Base):
     kind: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
     shared: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     needs_attention: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Hidden items stay fully functional for agents but are withheld from the workspace
+    # views. Unlike trashing, this is invisible to the client, so a stale filesystem
+    # snapshot cannot push the item back into sight.
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     trashed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)

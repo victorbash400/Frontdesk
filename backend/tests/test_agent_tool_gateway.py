@@ -52,7 +52,7 @@ def test_gateway_preserves_dynamic_tools_and_does_not_repeat_actions(different_r
             account_id = account.id
         sessions = InMemorySessionService()
         session = await sessions.create_session(app_name="gateway_test", user_id=account_id, state={"account_id": account_id, "goal_id": "assigned-goal"})
-        runner = Runner(app_name="gateway_test", session_service=sessions, agent=Agent(name="gateway_test", model="gemini-3-flash-preview", instruction="Use the assigned goal.", tools=[load_tools, broken_tool, CounterTools()]))
+        runner = Runner(app_name="gateway_test", session_service=sessions, agent=Agent(name="gateway_test", model="gemini-3.6-flash", instruction="Use the assigned goal.", tools=[load_tools, broken_tool, CounterTools()]))
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             async with agent_tool_gateway.bind(runner, session) as (run_id, ticket):
                 path = f"/internal/agent-runs/{run_id}"

@@ -33,15 +33,24 @@ async def plan_meeting_assignment(
         "description": item["description"],
         "required_plugin_ids": item["requiredPluginIds"],
         "available": set(item["requiredPluginIds"]).issubset(installed_plugins),
-    } for item in skill_catalog]
+    } for item in skill_catalog if set(item["requiredPluginIds"]).issubset({"aqualabs-store"})]
+    permitted_skill_ids = {str(item["id"]) for item in skill_index}
     plan = await plan_goal(
         planner,
         account_id,
         session_id,
-        f"Create one bounded coordinator task for a live client meeting. Do not alter existing goal tasks.\n\n{instruction}",
+        (
+            "Create one bounded background task for work requested during an already-active live client meeting. "
+            "The call, client identity, Meet space, invitation, participant, and conversation already exist. "
+            "Never create, schedule, email, join, replace, or end a meeting. Never repeat client discovery or "
+            "reconstruct the call workflow. AquaLabs Store is the only permitted application; never select or use "
+            "Jira, Slack, Google Workspace, Titan Mail, Drive, Docs, Browser Use, or another plugin. Plan only the "
+            "exact AquaLabs Store investigation or application action requested "
+            f"inside the existing conversation. Do not alter existing goal tasks.\n\n{instruction}"
+        ),
         [],
         skill_index,
-        json.loads(goal.skill_ids),
+        [skill_id for skill_id in json.loads(goal.skill_ids) if skill_id in permitted_skill_ids],
     )
     if len(plan.operations) != 1 or plan.operations[0].action != "create":
         raise RuntimeError("The coordinator planner must return one independent meeting task.")

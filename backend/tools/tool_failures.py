@@ -1,8 +1,12 @@
+import logging
 from typing import Any
 
 from google.adk.tools import BaseTool, ToolContext
 
 from tools.browser_use.intent import show_browser_intent
+
+
+logger = logging.getLogger(__name__)
 
 
 async def begin_single_tool(
@@ -40,4 +44,7 @@ def stop_on_tool_error(
 ) -> dict[str, str]:
     del args
     tool_context.state["goal_tool_in_flight"] = False
+    # The failure is handed back to the model as an observation, so without this line a
+    # tool that keeps failing looks like an agent that simply never decided anything.
+    logger.warning("tool=%s status=failed error=%s", tool.name, error)
     return {"status": "failed", "error": f"{tool.name} failed: {error}"}

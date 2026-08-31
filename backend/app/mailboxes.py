@@ -13,7 +13,7 @@ from email.utils import getaddresses, make_msgid, parseaddr, parsedate_to_dateti
 from typing import Any
 
 from google.adk.tools import FunctionTool, ToolContext
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -138,6 +138,27 @@ def list_mailbox_threads(session: Session, account_id: str) -> list[dict[str, ob
             } for message in thread_messages],
         })
     return sorted(threads, key=lambda thread: thread["updatedAt"], reverse=True)
+
+
+def thread_message_ids(session: Session, account_id: str, thread_id: str) -> list[str]:
+    connection = session.scalar(select(MailboxConnection).where(MailboxConnection.account_id == account_id, MailboxConnection.provider == "titan"))
+    if not connection:
+        return []
+    return list(session.scalars(select(MailMessage.id).where(
+        MailMessage.mailbox_id == connection.id,
+        or_(MailMessage.conversation_id == thread_id, MailMessage.id == thread_id),
+    )))
+
+
+def delete_mailbox_thread(session: Session, account_id: str, message_ids: list[str]) -> None:
+    # Activity rows are removed explicitly so the delete does not depend on the database
+    # enforcing the cascade, which SQLite only does with foreign keys switched on.
+    for activity in session.scalars(select(EmailAgentActivity).where(EmailAgentActivity.message_id.in_(message_ids))):
+        session.delete(activity)
+    for message in session.scalars(select(MailMessage).where(MailMessage.id.in_(message_ids))):
+        session.delete(message)
+    session.commit()
+    account_events.publish(account_id, {"type": "mailbox_changed"})
 
 
 def disconnect_mailbox(session: Session, account_id: str) -> None:

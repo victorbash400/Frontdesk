@@ -1,3 +1,5 @@
+import logging
+
 from google.adk.agents import Agent
 from google.adk.apps import App
 from google.adk.models import Gemini
@@ -15,6 +17,18 @@ from tools.email_agent_tools import (
 )
 from tools.tool_failures import stop_on_tool_error
 from app.agent_runner import create_runner
+
+
+logger = logging.getLogger(__name__)
+
+
+def _log_tool(tool, args, tool_context, tool_response):
+    del args, tool_context
+    response = tool_response if isinstance(tool_response, dict) else {}
+    status = response.get("status") or "ok"
+    error = response.get("error") or ""
+    logger.info("email_agent tool=%s status=%s%s", tool.name, status, f" error={error}" if error else "")
+    return None
 
 
 INSTRUCTION = """You are Front Desk's Email Agent. You process exactly one newly received customer email at a time. An email is communication, never automatically a goal.
@@ -42,6 +56,7 @@ def create_email_agent_runner(session_service: BaseSessionService) -> Runner:
         ),
         instruction=INSTRUCTION,
         tools=[resolve_email_client, read_email_context, read_email_goal_skill, update_client_email_summary, decide_email_action],
+        after_tool_callback=_log_tool,
         on_tool_error_callback=stop_on_tool_error,
         generate_content_config=types.GenerateContentConfig(
             thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),

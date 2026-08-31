@@ -11,7 +11,7 @@ from .schemas import FileSystemNodeSync, NodeCreate, NodeUpdate
 def list_nodes(session: Session, account_id: str, parent_id: str | None, include_trashed: bool) -> list[Node]:
     workspace = require_workspace(session, account_id)
     query: Select[tuple[Node]] = select(Node).where(Node.workspace_id == workspace.id)
-    query = query.where(Node.parent_id == parent_id)
+    query = query.where(Node.parent_id == parent_id, Node.hidden.is_(False))
     if not include_trashed:
         query = query.where(Node.trashed_at.is_(None))
     return list(session.scalars(query.order_by(Node.name.asc())))
@@ -22,6 +22,7 @@ def search_nodes(session: Session, account_id: str, query: str) -> list[Node]:
     statement = select(Node).where(
         Node.workspace_id == workspace.id,
         Node.trashed_at.is_(None),
+        Node.hidden.is_(False),
         Node.name.ilike(f"%{query}%"),
     ).order_by(Node.updated_at.desc()).limit(100)
     return list(session.scalars(statement))
@@ -32,7 +33,7 @@ def filesystem_snapshot(session: Session, account_id: str) -> list[dict[str, obj
     rows = session.execute(
         select(Node, DocumentContent)
         .outerjoin(DocumentContent, DocumentContent.node_id == Node.id)
-        .where(Node.workspace_id == workspace.id)
+        .where(Node.workspace_id == workspace.id, Node.hidden.is_(False))
         .order_by(Node.created_at)
     ).all()
     return [{

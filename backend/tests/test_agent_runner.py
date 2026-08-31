@@ -50,7 +50,7 @@ def test_cloud_runner_reuses_durable_remote_session_and_executes_real_tools() ->
             account_id = create_account(database, "runner-test@example.test", "runner-test-password", "Runner").id
         sessions = InMemorySessionService()
         session = await sessions.create_session(app_name="runner_test", user_id=account_id, state={"account_id": account_id})
-        local = Runner(app_name="runner_test", agent=Agent(name="runner_test", model="gemini-3-flash-preview", instruction="Remember the user's value.", tools=[remember]), session_service=sessions)
+        local = Runner(app_name="runner_test", agent=Agent(name="runner_test", model="gemini-3.6-flash", instruction="Remember the user's value.", tools=[remember]), session_service=sessions)
         remote = RemoteRuntime()
         runner = AgentEngineRunner(local, remote)
         for _ in range(2):

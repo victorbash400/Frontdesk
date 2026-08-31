@@ -5,7 +5,7 @@ import json
 import logging
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,11 +21,11 @@ from .email_agent import email_agent
 from .goal_tasks import goal_tasks
 from .goals_chat_stream import stream_goals_chat
 from .google_oauth import begin_connection, connection_status, disconnect, finish_connection, profile_photo, set_workspace_permission
-from .goals import answer_notification, claim_due_automations, create_automation, create_goal, delete_goal, list_goals, list_notifications, update_goal
+from .goals import restore_goal_plugins, answer_notification, claim_due_automations, create_automation, create_goal, delete_goal, list_goals, list_notifications, update_goal
 from .github_repositories import repository_access, set_repository_access
 from .mcp_oauth import begin_connection as begin_mcp_connection
 from .mcp_oauth import connection_support, disconnect as disconnect_mcp, finish_connection as finish_mcp_connection
-from .mailboxes import connect_titan_mailbox, disconnect_mailbox, list_mailbox_threads, mailbox_status, mailboxes
+from .mailboxes import connect_titan_mailbox, delete_mailbox_thread, disconnect_mailbox, list_mailbox_threads, mailbox_status, mailboxes, thread_message_ids
 from .models import Goal, GoalAssignment, GoalBrowserPreview, MailboxConnection
 from .plugin_service import install_plugin, plugin_snapshot, set_plugin_permission, uninstall_plugin
 from .repository import create_node, filesystem_snapshot, list_nodes, search_nodes, set_trashed, sync_nodes, update_node
@@ -142,6 +142,17 @@ def get_mailbox_threads(account_id: str = Depends(require_account_id), session: 
     return list_mailbox_threads(session, account_id)
 
 
+@app.delete("/api/mailbox/threads/{thread_id}", status_code=204)
+async def remove_mailbox_thread(thread_id: str, account_id: str = Depends(require_account_id), session: Session = Depends(get_session)) -> Response:
+    message_ids = thread_message_ids(session, account_id, thread_id)
+    if not message_ids:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The customer conversation was not found.")
+    for message_id in message_ids:
+        await email_agent.cancel(message_id)
+    delete_mailbox_thread(session, account_id, message_ids)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post("/api/mailbox/messages/{message_id}/retry", status_code=202)
 async def retry_email_agent(message_id: str, account_id: str = Depends(require_account_id)) -> dict[str, str]:
     try:
@@ -252,6 +263,8 @@ async def patch_goal(goal_id: str, body: GoalUpdate, account_id: str = Depends(r
     if body.status in {"paused", "completed"}:
         await goal_tasks.cancel(goal_id)
     goal = update_goal(session, account_id, goal_id, **body.model_dump(exclude_unset=True))
+    if body.status == "active":
+        goal["pluginIds"] = restore_goal_plugins(session, account_id, goal_id)
     if body.status == "active" and goal["pluginIds"]:
         await goal_tasks.start(account_id, goal_id)
     return goal
