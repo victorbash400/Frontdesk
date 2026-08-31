@@ -1,0 +1,7 @@
+.access { display: flex; min-height: 64px; padding: 0 16px; align-items: center; justify-content: space-between; gap: 20px; }
+.access span { min-width: 0; }
+.access strong, .access small { display: block; }
+.access strong { color: #3a3a37; font-size: 11px; font-weight: 590; }
+.access small { margin-top: 4px; overflow: hidden; color: #92928d; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.access a { display: inline-flex; height: 28px; padding: 0 10px; flex: 0 0 auto; align-items: center; border: 1px solid #dededb; border-radius: 8px; background: #fff; color: #3d3d3a; font-size: 10px; text-decoration: none; }
+.access a:hover { border-color: #c9c9c5; background: #fafaf8; }

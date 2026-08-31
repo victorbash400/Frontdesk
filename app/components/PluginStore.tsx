@@ -1,7 +1,6 @@
 "use client";
 
 import { Search } from "lucide-react";
-import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 
 import { usePluginDirectory } from "../hooks/usePluginDirectory";
@@ -43,7 +42,6 @@ export function PluginStore({ accountId }: { accountId: string }) {
         <span><h1>{view === "plugins" ? "Plugins" : "Plugin directory"}</h1>{view === "plugins" ? <p>Manage your connected services.</p> : null}</span>
         <button className={styles.browse} onClick={() => { setQuery(""); setView(view === "plugins" ? "directory" : "plugins"); }} type="button">{view === "plugins" ? "Browse directory" : "Back to plugins"}</button>
       </header>
-      <Link href="/extension">Get the Chrome extension</Link>
       <label className={styles.search}><Search aria-hidden="true" /><input aria-label="Search plugins" onChange={(event) => setQuery(event.target.value)} placeholder="Search plugins" type="search" value={query} /></label>
       {directory.error ? <p className={styles.error} role="alert">{directory.error}</p> : null}
       {view === "plugins" ? <>

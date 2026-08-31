@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 
 import type { PluginDefinition, PluginState } from "../lib/pluginDirectory";
+import { BrowserExtensionAccess } from "./BrowserExtensionAccess";
 import { GitHubRepositoryAccess } from "./GitHubRepositoryAccess";
 import { PluginFeaturePermissions } from "./PluginFeaturePermissions";
 import { PluginIcon } from "./PluginIcon";
@@ -35,10 +36,10 @@ export function ExternalPluginSection({ onConnect, onDisconnect, onPermissionCha
           <ChevronDown aria-hidden="true" className={styles.chevron} />
         </summary>
         <section aria-label={`${plugin.name} connection settings`} className={styles.settings}>
-          <header>
+          {state.connection_type === "extension" ? <BrowserExtensionAccess /> : <header>
             <span><strong>Connection</strong><small>{state.connected ? state.account_label || `${plugin.name} is connected` : state.setup_message || `Connect ${plugin.name} to Front Desk`}</small></span>
             {!isManaged ? <button disabled={!connectionAvailable} onClick={state.connected ? onDisconnect : onConnect} type="button">{state.connected ? "Disconnect" : "Connect"}</button> : null}
-          </header>
+          </header>}
           {state.connected ? <>
             <PluginFeaturePermissions connected onChange={onPermissionChange} permissions={state.permissions} plugin={plugin} />
             {plugin.id === "github" ? <GitHubRepositoryAccess onSaved={onRefresh} /> : null}
