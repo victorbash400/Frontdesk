@@ -77,13 +77,32 @@ those separately in the profile where the extension is installed.
 
 ## Database connection budget
 
-Cloud Run is capped at two instances. Each instance retains at most two application
-connections, one shared ADK session connection, and one event listener. Application
-overflow is capped at five and ADK overflow at one; event publishing uses a short-lived
-connection. Budget up to eleven connections per instance, plus release overlap and
-diagnostic jobs. Cloud SQL uses `max_connections=50`. Recheck this budget before
-increasing the Cloud Run instance cap; the original 25-connection database prevented
-both workers and replacement revisions from starting.
+Cloud SQL uses `max_connections=50` on a `db-f1-micro` instance; Cloud Run is capped at
+two instances. Per instance the ceiling is fourteen connections:
+
+- Ten application connections: `pool_size=5` with `max_overflow=5`.
+- One runtime ownership lease, outside the query pool.
+- Two ADK session connections: `pool_size=1` with `max_overflow=1`.
+- One event listener; event publishing uses a short-lived connection.
+
+Steady state is two instances at twenty-eight connections. A release adds a tagged
+revision that takes no traffic until promotion, so realistic overlap is three instances
+at forty-two. Four instances all at full overflow would exceed the server, which is why
+the tagged revision must stay at no traffic and why the instance cap cannot rise without
+also raising `max_connections` or the instance tier. The original 25-connection database
+prevented both workers and replacement revisions from starting.
+
+Runtime ownership is the reason the pools are split. Advisory locks are session scoped,
+so a lease holds its connection for the entire life of the work it guards: a mailbox
+listener holds one indefinitely, and a single inbound email holds several more across
+its message lock, its agent session lock, and the goal it dispatches. Sharing one pool
+between those leases and ordinary queries exhausted it and timed the Email Agent out
+after thirty seconds. All leases now share one connection on a separate `NullPool`
+engine, since distinct advisory keys can be held together on one session. That makes
+lease cost constant per instance instead of growing with concurrent work, and it means
+in-process ownership is decided in memory before PostgreSQL arbitrates between
+instances. If the lease connection drops, its locks release server side; the reconnect
+is logged, and ownership within the process is unaffected.
 
 Authentication releases its database session before streaming. Event subscribers
 share a single LISTEN connection per event loop, with account-scoped delivery.
