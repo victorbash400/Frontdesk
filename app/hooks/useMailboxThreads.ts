@@ -36,6 +36,15 @@ export function useMailboxThreads(connected: boolean) {
     await refresh();
   }, [refresh]);
 
+  const remove = useCallback(async (threadId: string) => {
+    const response = await authenticatedFetch(`/api/mailbox/threads/${encodeURIComponent(threadId)}`, { method: "DELETE" });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(payload.error || "Could not delete the conversation.");
+    }
+    await refresh();
+  }, [refresh]);
+
   useEffect(() => {
     const frame = requestAnimationFrame(() => void refresh());
     if (!connected) return () => cancelAnimationFrame(frame);
@@ -47,5 +56,5 @@ export function useMailboxThreads(connected: boolean) {
     return () => { cancelAnimationFrame(frame); events.close(); };
   }, [connected, refresh]);
 
-  return { error, loaded, refresh, retry, threads };
+  return { error, loaded, refresh, remove, retry, threads };
 }

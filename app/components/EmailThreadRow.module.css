@@ -8,3 +8,12 @@
 .row p { margin: 4px 0 0; overflow: hidden; color: #858580; font-size: 10px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 .row small { display: block; margin-top: 8px; color: #a0a09b; font-size: 9px; }
 .row small[data-attention="true"] { color: #b23f39; }
+
+.item { position: relative; }
+.item[data-deleting="true"] { opacity: 0.5; }
+.delete { position: absolute; top: 11px; right: 10px; display: grid; width: 22px; height: 22px; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #a0a09b; opacity: 0; cursor: pointer; transition: opacity 120ms ease; }
+.delete svg { width: 12px; height: 12px; }
+.item:hover .delete, .delete:focus-visible { opacity: 1; }
+.delete:hover { background: #f3e5e4; color: #b23f39; }
+.delete:disabled { cursor: default; opacity: 0.4; }
+.error { display: block; padding: 0 18px 10px; color: #b23f39; font-size: 9px; }

@@ -54,7 +54,9 @@ export function GoalsWorkspace({ accountId, clients }: GoalsWorkspaceProps) {
   const workspaceError = error ?? plugins.error ?? skills.error;
   const visible = useMemo(() => {
     const clientIds = new Set(clients.map((client) => client.id));
-    return goals.filter((goal) => clientIds.has(goal.clientId) && (!effectiveClientId || goal.clientId === effectiveClientId) && (status === "all" || status === "questions" || goal.status === status)).sort((left, right) => {
+    // A goal outlives its client's visibility: a hidden or removed client must not
+    // erase its work from the board, only from the client list.
+    return goals.filter((goal) => (clientIds.has(goal.clientId) || !effectiveClientId) && (!effectiveClientId || goal.clientId === effectiveClientId) && (status === "all" || status === "questions" || goal.status === status)).sort((left, right) => {
     if (sort === "oldest") return left.createdAt.localeCompare(right.createdAt);
     if (sort === "client") return (clients.find((client) => client.id === left.clientId)?.name ?? "").localeCompare(clients.find((client) => client.id === right.clientId)?.name ?? "");
     return right.createdAt.localeCompare(left.createdAt);
