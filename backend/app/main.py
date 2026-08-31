@@ -38,6 +38,12 @@ from tools.browser_use.relay_worker import browser_relay_workers
 from .agent_tool_gateway import router as agent_tool_router
 
 
+# Application loggers have no handler of their own, so without this the standard
+# library's last-resort handler drops everything below WARNING. Operational lines such
+# as mailbox ownership and message delivery are logged at INFO and were invisible in
+# Cloud Run, leaving only failures visible and making live diagnosis guesswork.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
 logger = logging.getLogger(__name__)
 
 
