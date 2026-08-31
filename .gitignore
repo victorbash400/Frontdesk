@@ -26,3 +26,4 @@ __pycache__/
 *.md
 native/agent-mike/build/
 native/agent-ears/build/
+reference images/
