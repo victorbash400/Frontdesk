@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { downmixAndResample, pcmPacket, resampleMono, type AudioFrame } from './audioPcm';
+import { downmixAndResample, normalizePcmLevel, pcmPacket, resampleMono, type AudioFrame } from './audioPcm';
 
 describe('meeting PCM conversion', () => {
   it('resamples Web Audio mono buffers', () => {
@@ -30,5 +30,14 @@ describe('meeting PCM conversion', () => {
     expect(view.getInt16(1, true)).toBe(-32767);
     expect(view.getInt16(3, true)).toBe(0);
     expect(view.getInt16(5, true)).toBe(32767);
+  });
+
+  it('raises quiet loopback speech without boosting already-loud audio', () => {
+    const quiet = normalizePcmLevel(new Int16Array([96, -96]));
+    const loud = normalizePcmLevel(new Int16Array([20_000, -20_000]));
+
+    expect(quiet[0]).toBe(768);
+    expect(quiet[1]).toBe(-768);
+    expect([...loud]).toEqual([20_000, -20_000]);
   });
 });

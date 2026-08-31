@@ -1,5 +1,13 @@
 export const cloudApiOrigin = import.meta.env.VITE_FRONT_DESK_API_ORIGIN || '';
-export const cloudAppOrigin = import.meta.env.VITE_FRONT_DESK_APP_ORIGIN || 'http://localhost:3000';
+// Accepts a comma-separated list so one build serves both the local development
+// origin and the public one, which differ only by how the same machine is addressed.
+export const cloudAppOrigins: string[] = (import.meta.env.VITE_FRONT_DESK_APP_ORIGIN || 'http://localhost:3000')
+  .split(',').map((origin: string) => origin.trim()).filter(Boolean);
+export const cloudAppOrigin = cloudAppOrigins[0];
+
+export function isAppOrigin(origin: string | undefined): boolean {
+  return !!origin && cloudAppOrigins.includes(origin);
+}
 
 const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
 

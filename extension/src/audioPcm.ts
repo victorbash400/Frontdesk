@@ -35,6 +35,20 @@ export function resampleMono(samples: Float32Array, sourceRate: number, targetRa
   return output;
 }
 
+export function normalizePcmLevel(samples: Int16Array, targetRms = 0.05, maximumGain = 8): Int16Array {
+  let energy = 0;
+  for (const sample of samples)
+    energy += (sample / 0x8000) ** 2;
+  const rms = Math.sqrt(energy / Math.max(1, samples.length));
+  const gain = rms > 0 ? Math.min(maximumGain, Math.max(1, targetRms / rms)) : 1;
+  const output = new Int16Array(samples.length);
+  for (let index = 0; index < samples.length; index++) {
+    const amplified = Math.round(samples[index] * gain);
+    output[index] = Math.max(-0x8000, Math.min(0x7fff, amplified));
+  }
+  return output;
+}
+
 export function pcmPacket(channel: number, samples: Float32Array): Uint8Array {
   const packet = new Uint8Array(1 + samples.length * 2);
   packet[0] = channel;

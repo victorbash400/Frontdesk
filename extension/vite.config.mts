@@ -6,7 +6,10 @@ const extensionRoot = import.meta.dirname;
 
 export default defineConfig(({ mode }) => {
   const cloudOrigin = process.env.VITE_FRONT_DESK_API_ORIGIN || '';
-  const backendEnvironment = cloudOrigin ? {} : loadEnv(mode, resolve(extensionRoot, '../backend'), 'FRONT_DESK_');
+  // A loopback API origin is still a local build talking to the local backend, so it
+  // needs that backend's connection token. Only a remote origin skips loading it.
+  const remoteOrigin = cloudOrigin && !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$|\/)/.test(cloudOrigin);
+  const backendEnvironment = remoteOrigin ? {} : loadEnv(mode, resolve(extensionRoot, '../backend'), 'FRONT_DESK_');
   return {
     root: resolve(extensionRoot, 'src/ui'),
     publicDir: false,

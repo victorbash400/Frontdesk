@@ -1,5 +1,6 @@
-import { AGENT_EARS_NAME, isAudioDeviceLabel } from './agentAudioDevices';
+import { AGENT_EARS_NAME, agentEarsConstraints, isAudioDeviceLabel } from './agentAudioDevices';
 import { AGENT_MICROPHONE_NAME, isAgentMicrophoneLabel } from './agentMicrophone';
+import { normalizePcmLevel } from './audioPcm';
 
 type MeetWorkerConfig = {
   meetingId: string;
@@ -21,6 +22,7 @@ const AUDIO_CHANNEL = 1;
 const VIDEO_CHANNEL = 2;
 const CAPTURE_RATE = 16_000;
 const PLAYBACK_RATE = 24_000;
+const SPEECH_RMS_THRESHOLD = 0.008;
 
 function initialize(): void {
   if (workerWindow.__frontDeskMeetWorker)
@@ -60,7 +62,7 @@ async function start(config: MeetWorkerConfig): Promise<void> {
   audio.connect(socket);
   await audio.installDevices();
   installPeerVideoCapture(audio);
-  const controls = new MeetControls(socket, audio);
+  const controls = new MeetControls(config, socket, audio);
   socket.addEventListener('open', () => {
     console.log('[Front Desk Meet] Media socket connected');
     socket.diagnostic('worker.started', {
@@ -229,13 +231,19 @@ class MeetAudioBridge {
     });
 
     const earsStream = await navigator.mediaDevices.getUserMedia({
-      audio: { deviceId: { exact: ears.deviceId } },
+      audio: agentEarsConstraints(ears.deviceId),
       video: false,
     });
+    const earsSettings = earsStream.getAudioTracks()[0]?.getSettings();
     this.captureInput(earsStream);
     this.socket?.diagnostic('capture.agent_ears_bound', {
       name: AGENT_EARS_NAME,
       inputDeviceId: ears.deviceId,
+      sampleRate: earsSettings?.sampleRate || 0,
+      channelCount: earsSettings?.channelCount || 0,
+      echoCancellation: Boolean(earsSettings?.echoCancellation),
+      noiseSuppression: Boolean(earsSettings?.noiseSuppression),
+      autoGainControl: Boolean(earsSettings?.autoGainControl),
     });
 
     const native = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -270,11 +278,12 @@ class MeetAudioBridge {
   private processAudio(samples: Int16Array): void {
     if (this.socket?.readyState !== WebSocket.OPEN)
       return;
+    const normalized = normalizePcmLevel(samples);
     this.capturePacketCount += 1;
-    const rms = pcmRms(samples);
+    const rms = pcmRms(normalized);
     this.captureRms = Math.max(this.captureRms, rms);
     document.documentElement.dataset.frontDeskAudioPeak = String(Math.round(rms * 0x7fff));
-    this.socket.send(int16Packet(AUDIO_CHANNEL, samples));
+    this.socket.send(int16Packet(AUDIO_CHANNEL, normalized));
     this.detectClientSpeech(rms);
     if (this.capturePacketCount === 1 || this.capturePacketCount % 100 === 0) {
       this.socket.diagnostic('capture.audio_summary', {
@@ -370,7 +379,7 @@ class MeetAudioBridge {
   private detectClientSpeech(rms: number): void {
     if (!this.participantPresent)
       return;
-    if (rms > 0.018) {
+    if (rms > SPEECH_RMS_THRESHOLD) {
       if (this.speechEndTimer !== undefined)
         window.clearTimeout(this.speechEndTimer);
       this.speechEndTimer = undefined;
@@ -448,7 +457,11 @@ class MeetControls {
   private speakerState: 'closed' | 'settings' | 'speaker' | 'ready' = 'closed';
   private readonly handledAdmissionButtons = new WeakSet<HTMLButtonElement>();
 
-  constructor(private readonly socket: WorkerSocket, private readonly audio: MeetAudioBridge) {}
+  constructor(
+    private readonly config: MeetWorkerConfig,
+    private readonly socket: WorkerSocket,
+    private readonly audio: MeetAudioBridge,
+  ) {}
 
   observe(): void {
     this.apply();
@@ -469,6 +482,7 @@ class MeetControls {
     leave?.click();
     this.socket.close(1000, 'Meeting complete');
     this.observer?.disconnect();
+    void chrome.runtime.sendMessage({ type: 'closeMeetTab', ...this.config });
   }
 
   private apply(): void {

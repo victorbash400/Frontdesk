@@ -16,7 +16,7 @@
 
 import { debugLog, RelayConnection } from './relayConnection';
 import { PendingConnections } from './pendingConnection';
-import { cloudAppOrigin, isCloudRelay } from './cloudConfig';
+import { cloudAppOrigins, isAppOrigin, isCloudRelay } from './cloudConfig';
 import { ConnectedBrowser, isNonDebuggableUrl } from './connectedTabGroup';
 import { relayDecision, validRelayIdentity, type MeetRelayIdentity } from './meetIdentity';
 
@@ -49,6 +49,11 @@ type PageMessage = {
   runtimeId: string;
   tabId: number;
   message: object;
+} | {
+  type: 'closeMeetTab';
+  meetingId: string;
+  runtimeId: string;
+  bridgeId: string;
 };
 
 class PlaywrightExtension {
@@ -64,7 +69,7 @@ class PlaywrightExtension {
   private _onMessage(message: PageMessage, sender: chrome.runtime.MessageSender, sendResponse: (response: any) => void) {
     switch (message.type) {
       case 'openCloudConnection': {
-        if (!sender.tab?.url || new URL(sender.tab.url).origin !== cloudAppOrigin || !isCloudRelay(message.relayUrl)) {
+        if (!sender.tab?.url || !isAppOrigin(new URL(sender.tab.url).origin) || !isCloudRelay(message.relayUrl)) {
           sendResponse({ success: false, error: 'Untrusted cloud browser connection.' });
           return false;
         }
@@ -127,6 +132,18 @@ class PlaywrightExtension {
       case 'meetRelayIncoming':
         void chrome.tabs.sendMessage(message.tabId, message);
         return false;
+      case 'closeMeetTab':
+        if (sender.tab?.id === undefined) {
+          sendResponse({ success: false });
+          return false;
+        }
+        void closeMeetTab({
+          meetingId: message.meetingId,
+          runtimeId: message.runtimeId,
+          bridgeId: message.bridgeId,
+          tabId: sender.tab.id,
+        }).then(() => sendResponse({ success: true }));
+        return true;
     }
   }
 
@@ -172,6 +189,7 @@ class PlaywrightExtension {
     const tabs = await chrome.tabs.query({});
     const frontDeskTab = tabs.find(tab => tab.id !== selectorTab.id && (
       tab.title === 'Front Desk'
+      || cloudAppOrigins.some((origin: string) => tab.url?.startsWith(origin))
       || tab.url?.startsWith('http://localhost:3000')
       || tab.url?.startsWith('http://127.0.0.1:3000')
     ));
@@ -217,6 +235,15 @@ chrome.tabs.onRemoved.addListener(tabId => {
       return chrome.storage.local.remove(ACTIVE_MEET_RELAY_KEY);
   });
 });
+
+async function closeMeetTab(identity: MeetRelayIdentity): Promise<void> {
+  const result = await chrome.storage.local.get(ACTIVE_MEET_RELAY_KEY);
+  const active = result[ACTIVE_MEET_RELAY_KEY] as MeetRelayIdentity | undefined;
+  if (!active || relayDecision(active, identity) !== 'same-tab')
+    return;
+  await chrome.storage.local.remove(ACTIVE_MEET_RELAY_KEY);
+  await chrome.tabs.remove(identity.tabId).catch(() => {});
+}
 
 async function registerMeetRelay(identity: MeetRelayIdentity): Promise<{ accepted: boolean; reason?: string; tabId?: number; localPlaybackMuted?: boolean }> {
   if (!validRelayIdentity(identity))

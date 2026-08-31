@@ -6,10 +6,10 @@ type BrowserAction = {
   x?: number;
   y?: number;
 };
-import { cloudAppOrigin, isCloudRelay } from './cloudConfig';
+import { cloudAppOrigin, isAppOrigin, isCloudRelay } from './cloudConfig';
 
 window.addEventListener('message', (event) => {
-  if (window.location.origin !== cloudAppOrigin || event.source !== window || event.origin !== cloudAppOrigin)
+  if (!isAppOrigin(window.location.origin) || event.source !== window || !isAppOrigin(event.origin))
     return;
   if (event.data?.type === 'frontDeskCloudConnect' && typeof event.data.relayUrl === 'string' && isCloudRelay(event.data.relayUrl))
     void chrome.runtime.sendMessage({ type: 'openCloudConnection', relayUrl: event.data.relayUrl });
